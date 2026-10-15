@@ -43,3 +43,11 @@ We compare three controllers:
 - **Predictive:** acts on the estimated crossing position and time.
 
 The core target is at least **70% control success across 30 near-center trials** at approximately **0.2-0.4 m/s**. The final study evaluates save rate, control rate, arrival error, response latency, and aborted trials across three arrival regions and two speed bands.
+
+## Optional full-width ball/goal scene
+
+An independent scene extension adds a visual goal, full-width randomized goal
+targets, pure-rolling launches, contact/outcome checks, and an optional head RGB
+sensor. It leaves `Goalkeeper-K1-Sim` and its launcher unchanged and includes no
+pretrained policy or detector weights. See [the full-goal environment guide](docs/FULL_GOAL_ENV.md)
+for parameters, CPU/GPU checks and reuse with a new policy configuration.

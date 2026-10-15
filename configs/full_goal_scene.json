@@ -1,0 +1,19 @@
+{
+  "goal_x": -0.8,
+  "goal_width": 2.4,
+  "goal_height": 1.0,
+  "post_radius": 0.025,
+  "ball_radius": 0.11,
+  "ball_mass": 0.43,
+  "ball_friction": [0.6, 0.005, 0.0001],
+  "start_x_range": [1.8, 2.6],
+  "start_y_range": [-1.4, 1.4],
+  "speed_range": [0.35, 0.5],
+  "target_margin": 0.02,
+  "robot_x_limit": 0.3,
+  "robot_y_limit": 1.35,
+  "root_reset_z_offset": 0.005,
+  "stop_speed": 0.12,
+  "stop_hold_s": 0.4,
+  "stop_distance": 0.75
+}
