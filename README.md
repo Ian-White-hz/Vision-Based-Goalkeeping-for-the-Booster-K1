@@ -90,6 +90,9 @@ dataset, retargeted onto the parallel-ankle K1:
 
 ## Tasks
 
+For offline conversion of the Humanoid-Goalkeeper G1 reference motions to K1,
+see [Goalkeeper motion retargeting](docs/goalkeeper_retargeting.md).
+
 Velocity tasks come in `Flat` and `Rough` terrain variants, optionally with `-Amp-` (motion prior) and
 `-DA-` (symmetry data augmentation). Tasks suffixed `-Parallel` use the parallel-linkage ankle model of the K1.
 Tracking tasks run on flat terrain. List them all with:
