@@ -9,9 +9,18 @@ from mjlab.managers.observation_manager import (
     ObservationTermCfg
 )
 from mjlab.managers.termination_manager import TerminationTermCfg
-from mjlab.scene import SceneCfg
+from mjlab.managers.reward_manager import RewardTermCfg
 
+from mjlab.managers import SceneEntityCfg
+
+from mjlab.scene import SceneCfg
 from .mdp.observations import ball_position_b
+from .mdp.rewards import (
+    base_ang_vel_xy_l2,
+    base_backward_velocity_penalty,
+    base_line_deviation,
+    knee_height_below_minimum
+)
 
 def make_goalkeeper_env_cfg(
     scene: SceneCfg,
@@ -96,6 +105,53 @@ def make_goalkeeper_env_cfg(
         )
     }
 
+    rewards: dict[str, RewardTermCfg] = {
+        "smoothness": RewardTermCfg(
+            func=common_mdp.action_acc_l2,
+            weight=-0.1,
+        ),
+        "dof_vel": RewardTermCfg(
+            func=common_mdp.joint_vel_l2,
+            weight=-5e-4,
+        ),
+        "ang_vel_xy": RewardTermCfg(
+            func=base_ang_vel_xy_l2,
+            weight=-0.1,
+            params={"robot_name": "robot"}
+        ),
+        "dof_pos_limits": RewardTermCfg(  
+            func=common_mdp.joint_pos_limits,
+            weight=-3.0,
+        ),
+        # 向后运动惩罚，防止机器人后退
+        "noretreat": RewardTermCfg(
+            func=base_backward_velocity_penalty,
+            weight=-2.0,
+            params={"robot_name": "robot"}
+        ),
+        "stayonline": RewardTermCfg(
+            func=base_line_deviation,
+            weight=-2.0,
+            params={
+                "robot_name": "robot",
+                "reference_x": 0.0,
+                "deadband": 0.2,
+                "max_distance": 1.2,
+            }
+        ),
+        "penalize_kneeheight": RewardTermCfg(
+            func=knee_height_below_minimum,
+            weight=-100.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=("Left_Shank", "Right_Shank"),
+                ),
+                "minimum_height": 0.15,
+            }
+        )
+    }
+
     terminations: dict[str, TerminationTermCfg] = {
         "time_out": TerminationTermCfg(
             func=common_mdp.time_out,
@@ -109,5 +165,6 @@ def make_goalkeeper_env_cfg(
         episode_length_s=episode_length_s,
         observations=observations,
         actions=actions,
+        rewards=rewards,
         terminations=terminations,
     )
