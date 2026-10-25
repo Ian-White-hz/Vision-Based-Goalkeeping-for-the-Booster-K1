@@ -19,7 +19,11 @@ from .mdp.rewards import (
     base_ang_vel_xy_l2,
     base_backward_velocity_penalty,
     base_line_deviation,
-    knee_height_below_minimum
+    knee_height_below_minimum,
+    feet_orientation_exp,
+    ActuatedJointAccelerationPenalty,
+    NormalizedJointTorquePenalty,
+    MotorLimitPenalty
 )
 
 def make_goalkeeper_env_cfg(
@@ -106,19 +110,23 @@ def make_goalkeeper_env_cfg(
     }
 
     rewards: dict[str, RewardTermCfg] = {
+        # 平滑性惩罚，鼓励机器人动作平滑
         "smoothness": RewardTermCfg(
             func=common_mdp.action_acc_l2,
             weight=-0.1,
         ),
+        # 关节速度惩罚，防止机器人关节运动过快
         "dof_vel": RewardTermCfg(
             func=common_mdp.joint_vel_l2,
             weight=-5e-4,
         ),
+        # 电机扭矩惩罚，防止机器人关节扭矩过大
         "ang_vel_xy": RewardTermCfg(
             func=base_ang_vel_xy_l2,
             weight=-0.1,
             params={"robot_name": "robot"}
         ),
+        # 关节位置惩罚，防止机器人关节位置超出限制
         "dof_pos_limits": RewardTermCfg(  
             func=common_mdp.joint_pos_limits,
             weight=-3.0,
@@ -129,6 +137,7 @@ def make_goalkeeper_env_cfg(
             weight=-2.0,
             params={"robot_name": "robot"}
         ),
+        # 基于基座位置的偏离惩罚，防止机器人离开球门
         "stayonline": RewardTermCfg(
             func=base_line_deviation,
             weight=-2.0,
@@ -139,6 +148,7 @@ def make_goalkeeper_env_cfg(
                 "max_distance": 1.2,
             }
         ),
+        # 膝关节高度惩罚，防止机器人下蹲过低
         "penalize_kneeheight": RewardTermCfg(
             func=knee_height_below_minimum,
             weight=-100.0,
@@ -149,7 +159,47 @@ def make_goalkeeper_env_cfg(
                 ),
                 "minimum_height": 0.15,
             }
-        )
+        ),
+        # 关节速度和电机扭矩限制惩罚
+        "dof_vel_limits": RewardTermCfg(
+            func=MotorLimitPenalty,
+            weight=-2.0,
+            params={
+                "robot_name": "robot",
+                "kind": "velocity",
+                "soft_ratio": 0.9,
+            },
+        ),
+        "torque_limits": RewardTermCfg(
+            func=MotorLimitPenalty,
+            weight=-3.0,
+            params={
+                "robot_name": "robot",
+                "kind": "torque",
+                "soft_ratio": 0.95,
+            },
+        ),
+        "dof_acc": RewardTermCfg(
+            func=ActuatedJointAccelerationPenalty,
+            weight=-2.5e-7,
+            params={"robot_name": "robot"},
+        ),
+        "torques": RewardTermCfg(
+            func=NormalizedJointTorquePenalty,
+            weight=-1e-5,
+            params={"robot_name": "robot"},
+        ),
+        "feetorientaion": RewardTermCfg(
+            func=feet_orientation_exp,
+            weight=3.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=("left_foot_link", "right_foot_link"),
+                ),
+                "coefficient": 5.0,
+            },
+        ),
     }
 
     terminations: dict[str, TerminationTermCfg] = {
