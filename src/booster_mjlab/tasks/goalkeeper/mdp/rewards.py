@@ -8,6 +8,13 @@ from mjlab.managers.reward_manager import RewardTermCfg
 
 from mjlab.utils.lab_api.math import quat_apply_inverse
 
+from .shot_state import (
+    get_recovery_mask,
+    get_hand_target_distance,
+    stopball_transition,
+    get_shot_outcome_state
+)
+
 import math
 import torch
 
@@ -172,6 +179,152 @@ class NormalizedJointTorquePenalty:
 
         return torch.sum(torch.square(torque / self._kp), dim=1)
         
+class FeetSlippageReward:
+    def __init__(
+        self,
+        cfg: RewardTermCfg,
+        env: ManagerBasedRlEnv,
+    ):
+        robot = env.scene[cfg.params["robot_name"]]
+        sensor = env.scene[cfg.params["sensor_name"]]
+
+        foot_names = sensor.primary_names
+        foot_ids, resolved_names = robot.find_bodies(
+            foot_names,
+            preserve_order=True,
+        )
+
+        if len(foot_ids) != 2:
+            raise ValueError("Expected exactly two foot bodies")
+
+        if list(resolved_names) != list(foot_names):
+            raise ValueError("Foot names do not match resolved names")
+
+        self._foot_ids = foot_ids
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        robot_name: str,
+        sensor_name: str,
+        contact_threshold: float = 1.0,
+        coefficient: float = 10.0,
+    ) -> torch.Tensor:
+        robot = env.scene[robot_name]
+        sensor = env.scene[sensor_name]
+
+        foot_velocity_w = robot.data.body_link_lin_vel_w[:, self._foot_ids, :]
+        foot_force_w = sensor.data.force
+
+        if foot_force_w is None:
+            raise ValueError("Foot contact forces are not available")
+
+        return feet_slippage_exp(
+            foot_velocity_w=foot_velocity_w,
+            foot_force_w=foot_force_w,
+            contact_threshold=contact_threshold,
+            coefficient=coefficient,
+        )
+
+class JumpLandingReward:
+    def __init__(
+        self,
+        cfg: RewardTermCfg,
+        env: ManagerBasedRlEnv,
+    ):
+        self._was_supported = torch.zeros(
+            env.num_envs,
+            dtype=torch.bool,
+            device=env.device,
+        )
+        self._has_in_air = torch.zeros_like(self._was_supported)
+        self._cached_reward = torch.zeros(
+            env.num_envs,
+            device=env.device,
+        )
+        self._last_update_step = torch.full(
+            (env.num_envs,),
+            -1,
+            dtype=torch.long,
+            device=env.device,
+        )
+
+    def reset(self, env_ids=None):
+        if env_ids is None:
+            env_ids = slice(None)
+
+        for value in (
+            self._was_supported,
+            self._has_in_air,
+            self._cached_reward,
+        ):
+            value[env_ids] = 0
+
+        self._last_update_step[env_ids] = -1
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        robot_name: str,
+        sensor_name: str,
+        minimum_rise: float = 0.08,
+        force_sign: float = -1.0,
+        contact_threshold: float = 1.0,
+    ) -> torch.Tensor:
+        robot = env.scene[robot_name]
+        sensor = env.scene[sensor_name]
+
+        force = sensor.data.force
+        found = sensor.data.found
+        if force is None or found is None:
+            raise RuntimeError("Landing reward requires found and force")
+
+        # 当前脚—地面传感器的支撑 Fz 为负，在适配层转换。
+        support_force = force_sign * force
+
+        region = env._full_goal_shots["region"]
+        jump_mask = (region == 2) | (region == 3)
+
+        both_supported = (
+            (support_force[..., 2] > contact_threshold)
+            & (found > 0)
+        ).all(dim=1)
+
+        no_foot_contact = ~(found > 0).any(dim=1)
+
+        height = (
+            robot.data.root_link_pos_w[:, 2]
+            - env.scene.env_origins[:, 2]
+        )
+        default_height = robot.data.default_root_state[:, 2]
+
+        takeoff = (
+            jump_mask
+            & self._was_supported
+            & no_foot_contact
+            & (height - default_height >= minimum_rise)
+        )
+
+        fresh = (
+            self._last_update_step != env.common_step_counter
+        )
+
+        self._was_supported |= fresh & both_supported
+        self._has_in_air |= fresh & takeoff
+
+        reward = jump_landing_reward(
+            foot_force_w=support_force,
+            has_in_air=self._has_in_air,
+            jump_mask=jump_mask,
+            contact_threshold=contact_threshold,
+        )
+
+        self._cached_reward.copy_(
+            torch.where(fresh, reward, self._cached_reward)
+        )
+        self._last_update_step.fill_(env.common_step_counter)
+
+        return self._cached_reward
 
 def base_ang_vel_xy_l2(
     env: ManagerBasedRlEnv,
@@ -339,6 +492,68 @@ def post_upper_joint_position_exp(
         coefficient=coefficient,
     )
 
+def post_recovery_from_env(
+    env: ManagerBasedRlEnv,
+    kind: str,
+    robot_name: str = "robot",
+    ball_name: str = "ball",
+    reference_x: float = 0.0,
+    velocity_change_threshold: float = 2.0,
+    coefficient: float = 3.0,
+)  -> torch.Tensor:
+    '''获取机器人恢复奖励, shape (B,)'''
+    if kind == "orientation":
+        reward_func = post_orientation_exp
+    elif kind == "angular_velocity":
+        reward_func = post_ang_vel_exp
+    elif kind == "linear_velocity":
+        reward_func = post_lin_vel_exp
+    else:
+        raise ValueError(f"Unknown recovery kind: {kind}")
+
+    recovery_mask = get_recovery_mask(
+        env=env,
+        ball_name=ball_name,
+        reference_x=reference_x,
+        velocity_change_threshold=velocity_change_threshold,
+    )
+
+    return reward_func(
+        env,
+        recovery_mask=recovery_mask,
+        robot_name=robot_name,
+        coefficient=coefficient,
+    )
+
+def post_upper_joint_position_from_env(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    ball_name: str = "ball",
+    reference_x: float = 0.0,
+    velocity_change_threshold: float = 2.0,
+    coefficient: float = 1.0,
+) -> torch.Tensor:
+    '''获取机器人上半身关节位置恢复奖励, shape (B,)'''
+    robot = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids
+
+    joint_position = robot.data.joint_pos[:, joint_ids]
+    default_position = robot.data.default_joint_pos[:, joint_ids]
+
+    recovery_mask = get_recovery_mask(
+        env=env,
+        ball_name=ball_name,
+        reference_x=reference_x,
+        velocity_change_threshold=velocity_change_threshold,
+    )
+
+    return post_upper_joint_position_exp(
+        joint_position=joint_position,
+        default_joint_position=default_position,
+        recovery_mask=recovery_mask,
+        coefficient=coefficient,
+    )  
+
 def feet_slippage_exp(
     foot_velocity_w: torch.Tensor,
     foot_force_w: torch.Tensor,
@@ -376,6 +591,20 @@ def excessive_foot_contact(
 
     return (mean_force > max_contact_force).float()
 
+def excessive_foot_contact_from_env(
+    env: ManagerBasedRlEnv,
+    sensor_name: str,
+    max_contact_force: float = 1000.0,
+) -> torch.Tensor:
+    '''惩罚脚部接触力过大, shape (B,)'''
+    sensor = env.scene[sensor_name]
+    foot_force_w = sensor.data.force
+
+    if foot_force_w is None:
+        raise ValueError("Foot contact forces are not available")
+
+    return excessive_foot_contact(foot_force_w, max_contact_force)
+
 def jump_landing_reward(
     foot_force_w: torch.Tensor,
     has_in_air: torch.Tensor,
@@ -401,10 +630,9 @@ def jump_landing_reward(
     )
 
     one_contact = (
-        ((left > contact_threshold) 
-         ^ (right > contact_threshold))
-         & has_in_air
-    )
+        ((left > contact_threshold) & (right < contact_threshold))
+        | ((left < contact_threshold) & (right > contact_threshold))
+    ) & has_in_air
 
     reward = (
         has_in_air.float()
@@ -508,6 +736,46 @@ def ee_reach_reward(
 
     return reward * upright
 
+def ee_reach_from_env(
+    env: ManagerBasedRlEnv,
+    hand_cfg: SceneEntityCfg,
+    ball_name: str = "ball",
+    curriculum_level: float = 0.0,
+    distance_sigma: float = 5.0,
+    reach_threshold: float = 0.2,
+) -> torch.Tensor:
+    distance = get_hand_target_distance(env, hand_cfg)
+
+    robot = env.scene[hand_cfg.name]
+    ball = env.scene[ball_name]
+    shots = env._full_goal_shots
+    origins = env.scene.env_origins
+
+    return ee_reach_reward(
+        distance=distance,
+        target_position_e=shots["target_position_e"],
+        torso_position_e=(
+            robot.data.root_link_pos_w - origins
+        ),
+        body_velocity_w=robot.data.root_link_lin_vel_w,
+        projected_gravity_b=robot.data.projected_gravity_b,
+        ball_position_x_e=(
+            ball.data.root_link_pos_w[:, 0] - origins[:, 0]
+        ),
+        ball_velocity_x_w=ball.data.root_link_lin_vel_w[:, 0],
+        launch_velocity_x_w=shots["velocity"][:, 0],
+        region=shots["region"],
+        curriculum_level=curriculum_level,
+        distance_sigma=distance_sigma,
+        reach_threshold=reach_threshold,
+    )
+
+def stopball_from_env(
+    env: ManagerBasedRlEnv,
+) -> torch.Tensor:
+    state = get_shot_outcome_state(env)
+    return state.stopball_reward
+
 def target_success_reward(
     distance: torch.Tensor,
     success_flag: torch.Tensor,
@@ -524,41 +792,19 @@ def target_success_reward(
 
     return (1.0 + success_flag.float()) * close_to_target.float()
 
-def stopball_transition(
-    ball_position_x_e: torch.Tensor,
-    ball_velocity_x_w: torch.Tensor,
-    launch_velocity_x_w: torch.Tensor,
-    stop_flag: torch.Tensor,
-    success_flag: torch.Tensor,
-    velocity_change_threshold: float = 2.0,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    '''检测球是否停止或成功接触, shape (B,)'''
-    for flag in (stop_flag, success_flag):
-        if (
-            flag.dtype != torch.bool
-            or flag.shape != ball_position_x_e.shape
-        ):
-            raise ValueError("Flags must be boolean with shape (B,)")
-        
-    changed_velocity = (
-        (
-            ball_velocity_x_w - launch_velocity_x_w
-            > velocity_change_threshold
-        )
-        & (ball_position_x_e > 0.0)
+def target_success_from_env(
+    env: ManagerBasedRlEnv,
+    hand_cfg: SceneEntityCfg,
+    strict_threshold: float = 0.15,
+) -> torch.Tensor:
+    distance = get_hand_target_distance(env, hand_cfg)
+    state = get_shot_outcome_state(env)
+
+    return target_success_reward(
+        distance=distance,
+        success_flag=state.success_before_step,
+        strict_threshold=strict_threshold,
     )
-
-    first_event = (~stop_flag) & changed_velocity
-    reward = first_event.float()
-
-    next_stop_flag = (
-        stop_flag
-        | changed_velocity
-        | (ball_position_x_e < 0.0)
-    )
-    next_success_flag = success_flag | first_event
-
-    return reward, next_stop_flag, next_success_flag
 
 def _actuated_joint_ids(robot) -> torch.Tensor:
     groups = []

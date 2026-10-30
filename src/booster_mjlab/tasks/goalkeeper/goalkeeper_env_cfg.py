@@ -14,7 +14,10 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers import SceneEntityCfg
 
 from mjlab.scene import SceneCfg
-from .mdp.observations import ball_position_b
+from .mdp.observations import (
+    ball_position_b,
+    simulated_ball_measurement_b,
+)
 from .mdp.rewards import (
     base_ang_vel_xy_l2,
     base_backward_velocity_penalty,
@@ -34,13 +37,18 @@ def make_goalkeeper_env_cfg(
 ) -> ManagerBasedRlEnvCfg:
     
     actor_terms = {
-        # "ball_position": ObservationTermCfg(
-        #     func=ball_position_b,
-        #     params={
-        #         "robot_name": "robot",
-        #         "ball_name": "ball"
-        #     }
-        # ),
+        "ball_measurement": ObservationTermCfg(
+            func=simulated_ball_measurement_b,
+            params={
+                "robot_name": "robot",
+                "ball_name": "ball",
+                "max_range": 5.0,
+            },
+            # 历史数据长度, 提过过去5帧的观测数据
+            history_length=5,
+            # 是否将历史数据展平为一维向量, 如果为False, 则返回一个形状为 (B, history_length, feature_dim) 的张量
+            flatten_history_dim=True
+        ),
         # 机器人基座朝向重力方向的投影3维
         "projected_gravity": ObservationTermCfg(
             func=common_mdp.projected_gravity,

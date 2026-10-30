@@ -34,3 +34,35 @@ def ball_position_b(
         robot.data.root_link_quat_w,
         relative_position_w
     )
+
+def simulated_ball_measurement_b(
+    env: ManagerBasedRlEnv,
+    robot_name: str = "robot",
+    ball_name: str = "ball",
+    max_range: float = 5.0,
+) -> torch.Tensor:
+    if max_range <= 0.0:
+        raise ValueError("max_range must be positive.")
+
+    position_b = ball_position_b(env, robot_name, ball_name)
+
+    distance = torch.linalg.vector_norm(position_b, dim=-1)
+
+    valid = (
+        torch.isfinite(position_b).all(dim=-1) 
+        & (distance <= max_range)
+    )
+
+    measured_position_b = torch.where(
+        valid[:, None],
+        position_b,
+        torch.zeros_like(position_b)
+    )
+
+    return torch.cat(
+        (
+            measured_position_b,
+            valid[:, None].to(dtype=position_b.dtype),
+        ),
+        dim=-1
+    )
