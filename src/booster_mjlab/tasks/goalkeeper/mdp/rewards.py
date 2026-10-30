@@ -751,7 +751,7 @@ def ee_reach_from_env(
     shots = env._full_goal_shots
     origins = env.scene.env_origins
 
-    return ee_reach_reward(
+    reward = ee_reach_reward(
         distance=distance,
         target_position_e=shots["target_position_e"],
         torso_position_e=(
@@ -770,11 +770,17 @@ def ee_reach_from_env(
         reach_threshold=reach_threshold,
     )
 
+    return _active_shot_reward(env, reward)
+
 def stopball_from_env(
     env: ManagerBasedRlEnv,
 ) -> torch.Tensor:
     state = get_shot_outcome_state(env)
-    return state.stopball_reward
+
+    return _active_shot_reward(
+        env,
+        state.stopball_reward,
+    )
 
 def target_success_reward(
     distance: torch.Tensor,
@@ -800,11 +806,13 @@ def target_success_from_env(
     distance = get_hand_target_distance(env, hand_cfg)
     state = get_shot_outcome_state(env)
 
-    return target_success_reward(
+    reward = target_success_reward(
         distance=distance,
         success_flag=state.success_before_step,
         strict_threshold=strict_threshold,
     )
+
+    return _active_shot_reward(env, reward)
 
 def _actuated_joint_ids(robot) -> torch.Tensor:
     groups = []
@@ -850,3 +858,15 @@ def _masked_recovery_exp(
 def _check_foot_vectors(value: torch.Tensor) -> None:
     if value.ndim != 3 or value.shape[1:] != (2, 3):
         raise ValueError("Foot vectors must have shape (B, 2, 3)")
+
+def _active_shot_reward(
+    env: ManagerBasedRlEnv,
+    reward: torch.Tensor,
+) -> torch.Tensor:
+    resolved = env._goalkeeper_outcome_state.shot_resolved
+
+    return torch.where(
+        resolved,
+        torch.zeros_like(reward),
+        reward
+    )

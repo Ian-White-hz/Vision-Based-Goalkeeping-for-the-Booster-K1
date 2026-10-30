@@ -53,6 +53,9 @@ env = NS(
         "region": torch.tensor([0, 1]),
         "velocity": torch.tensor([[-4.0, 0.0, 0.0]]).repeat(2, 1),
     },
+    _goalkeeper_outcome_state=NS(
+        shot_resolved=torch.zeros(2, dtype=torch.bool),
+    ),
 )
 
 hand_cfg = SceneEntityCfg("robot", site_ids=[0, 1])

@@ -77,6 +77,9 @@ def booster_k1_goalkeeper_env_cfg(
     cfg.viewer.distance = 4.0
     cfg.viewer.azimuth = 90.0
 
+    # 每个环境的物理约束容量。
+    cfg.sim.njmax = 300
+
     action = cfg.actions["joint_pos"]
     assert isinstance(action, JointPositionActionCfg)
     action.scale = dict(K1_ACTION_SCALE)

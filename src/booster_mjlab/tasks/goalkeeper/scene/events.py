@@ -25,6 +25,38 @@ def compute_ballistic_launch_velocity(
 
     return velocity
 
+def compute_ballistic_intercept(
+    start_position_e: torch.Tensor,
+    veloctiy: torch.Tensor,
+    *,
+    intercept_x: float,
+    gravity: float = 9.81,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    velocity_x = veloctiy[:, 0]
+
+    if (velocity_x >= 0.0).any():
+        raise ValueError("velocity_x must be negative for intercept")
+
+    intercept_time = (
+        intercept_x - start_position_e[:, 0]
+    ) / velocity_x
+
+    if (
+        (~torch.isfinite(intercept_time)) | (intercept_time <= 0.0)
+    ).any():
+        raise ValueError("Invalid intercept parameters")
+
+    position_e = (
+        start_position_e
+        + veloctiy * intercept_time[:, None]
+    )
+
+    position_e[:, 2] -= (
+        0.5 * gravity * torch.square(intercept_time)
+    )
+
+    return position_e, intercept_time
+
 def sample_six_region_shots(
     count,
     settings: FullGoalSettings,
@@ -73,7 +105,7 @@ def sample_six_region_shots(
         dim=-1
     )
 
-    target_position_e = torch.stack(
+    goal_target_position_e = torch.stack(
         (
             torch.full(
                 (count,), 
@@ -90,15 +122,27 @@ def sample_six_region_shots(
 
     velocity = compute_ballistic_launch_velocity(
         start_position_e=start_position_e,
-        target_position_e=target_position_e,
+        target_position_e=goal_target_position_e,
         flight_time=flight_time,
         gravity=gravity,
     )
 
+    target_position_e, intercept_time = compute_ballistic_intercept(
+        start_position_e=start_position_e,
+        veloctiy=velocity,
+        intercept_x=settings.intercept_x,
+        gravity=gravity,
+    )
+
+    if (intercept_time >= flight_time).any():
+        raise ValueError("intercept_time must be less than flight_time")
+
     return {
         "start_position_e": start_position_e,
+        "goal_target_position_e": goal_target_position_e,
         "target_position_e": target_position_e,
         "flight_time": flight_time,
+        "intercept_time": intercept_time,
         "velocity": velocity,
         "region": region,
     }
@@ -118,6 +162,7 @@ def launch_six_region_shots(
         len(ids),
         settings,
         device=env.device,
+        gravity=-env.cfg.sim.mujoco.gravity[2],
     )
 
     if not hasattr(env, "_full_goal_shots"):
@@ -177,6 +222,7 @@ def launch_shots(env, env_ids, settings: FullGoalSettings):
         goal_y=sample["target_y"],
         goal_x=settings.goal_x,
         ball_radius=settings.ball_radius,
+        intercept_x=settings.intercept_x,
     )
 
     sample["target_position_e"] = target_position_e

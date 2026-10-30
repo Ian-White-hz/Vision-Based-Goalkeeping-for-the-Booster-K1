@@ -112,7 +112,13 @@ def get_recovery_mask(
         > velocity_change_threshold
     )
 
-    return behind_reference | velocity_changed
+    outcome = env._goalkeeper_outcome_state
+
+    return (
+        behind_reference
+        | velocity_changed
+        | outcome.shot_resolved
+    )
 
 def compute_rolling_shot_target(
     start_x: torch.Tensor,

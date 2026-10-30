@@ -79,21 +79,6 @@ def make_goalkeeper_env_cfg(
             "ball_name": "ball"
         }
     )
-    # critic_terms = {
-    #     "ball_position": ObservationTermCfg(
-    #         func=ball_position_b,
-    #         params={
-    #             "robot_name": "robot",
-    #             "ball_name": "ball"
-    #         }
-    #     ),
-    #     "projected_gravity": ObservationTermCfg(
-    #         func=common_mdp.projected_gravity,
-    #     ),
-    #     "base_ang_vel": ObservationTermCfg(
-    #         func=common_mdp.base_ang_vel,
-    #     )
-    # }
 
     observations = {
         "actor": ObservationGroupCfg(

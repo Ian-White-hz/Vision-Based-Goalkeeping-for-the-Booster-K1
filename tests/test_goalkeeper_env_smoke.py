@@ -102,6 +102,17 @@ try:
     assert not terminated.any()
     assert not truncated.any()
 
+    for name in ("eereach", "success", "stopball"):
+        term = env.reward_manager.get_term_cfg(name)
+        raw_reward = term.func(env, **term.params)
+
+        torch.testing.assert_close(
+            raw_reward,
+            torch.zeros(env.num_envs, device=env.device),
+        )
+
+    print("射门结束后任务奖励归零检查通过")
+
     # 经过 1、2 个控制步，还不能结束。
     for _ in range(2):
         observations, reward, terminated, truncated, _ = env.step(action)

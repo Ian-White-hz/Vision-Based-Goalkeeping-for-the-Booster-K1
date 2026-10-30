@@ -27,6 +27,7 @@ sample = sample_six_region_shots(
 )
 
 target = sample["target_position_e"]
+goal_target = sample["goal_target_position_e"]
 bounds = torch.tensor(settings.six_region_bounds)
 
 torch.testing.assert_close(
@@ -34,16 +35,52 @@ torch.testing.assert_close(
     torch.arange(6),
 )
 
-assert (target[:, 1] >= bounds[:, 0]).all()
-assert (target[:, 1] <= bounds[:, 1]).all()
-assert (target[:, 2] >= bounds[:, 2]).all()
-assert (target[:, 2] <= bounds[:, 3]).all()
+assert (goal_target[:, 1] >= bounds[:, 0]).all()
+assert (goal_target[:, 1] <= bounds[:, 1]).all()
+assert (goal_target[:, 2] >= bounds[:, 2]).all()
+assert (goal_target[:, 2] <= bounds[:, 3]).all()
 assert (sample["velocity"][:, 0] < 0.0).all()
 
 for value in sample.values():
     assert torch.isfinite(value).all()
 
 print("六类采样目标:", target)
+
+torch.testing.assert_close(
+    target[:, 0],
+    torch.full_like(target[:, 0], settings.intercept_x),
+    atol=1e-6,
+    rtol=1e-6,
+)
+
+torch.testing.assert_close(
+    goal_target[:, 0],
+    torch.full_like(goal_target[:, 0], settings.goal_x),
+)
+
+assert (sample["intercept_time"] > 0.0).all()
+assert (
+    sample["intercept_time"] < sample["flight_time"]
+).all()
+
+for position_key, time_key in (
+    ("target_position_e", "intercept_time"),
+    ("goal_target_position_e", "flight_time"),
+):
+    time = sample[time_key]
+
+    reconstructed = (
+        sample["start_position_e"]
+        + sample["velocity"] * time[:, None]
+    )
+    reconstructed[:, 2] -= 0.5 * 9.81 * time.square()
+
+    torch.testing.assert_close(
+        reconstructed,
+        sample[position_key],
+        atol=1e-5,
+        rtol=1e-5,
+    )
 
 cfg = booster_k1_goalkeeper_env_cfg(
     num_envs=2,

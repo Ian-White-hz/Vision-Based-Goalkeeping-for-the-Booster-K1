@@ -44,6 +44,9 @@ env = SimpleNamespace(
     _full_goal_shots={
         "velocity": torch.tensor([[-3.0, 0.0]]).repeat(6, 1),
     },
+    _goalkeeper_outcome_state=SimpleNamespace(
+        shot_resolved=torch.zeros(6, dtype=torch.bool),
+    ),
 )
 
 mask = get_recovery_mask(env)

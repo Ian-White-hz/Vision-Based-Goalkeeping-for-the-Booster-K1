@@ -36,7 +36,12 @@ robot = NS(
     )
 )
 
-env = NS(scene={"robot": robot})
+env = NS(
+    scene={"robot": robot},
+    _goalkeeper_outcome_state=NS(
+        shot_resolved=torch.zeros(3, dtype=torch.bool),
+    ),
+)
 recovery_mask = torch.tensor([False, True, True])
 
 cases = [
@@ -106,6 +111,9 @@ adapter_env = NS(
     _full_goal_shots={
         "velocity": torch.tensor([[-3.0, 0.0]]).repeat(3, 1),
     },
+    _goalkeeper_outcome_state=NS(
+        shot_resolved=torch.zeros(3, dtype=torch.bool),
+    ),
 )
 
 kinds = (
@@ -165,3 +173,15 @@ torch.testing.assert_close(reward, expected)
 
 print("上肢恢复奖励:", reward)
 print("上肢恢复奖励适配检查通过")
+
+adapter_env._goalkeeper_outcome_state.shot_resolved[0] = True
+
+reward = post_recovery_from_env(
+    adapter_env,
+    kind="orientation",
+)
+
+torch.testing.assert_close(
+    reward[0],
+    torch.tensor(1.0),
+)
