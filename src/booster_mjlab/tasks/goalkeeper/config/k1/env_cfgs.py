@@ -42,6 +42,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.outcomes import (
 )
 from booster_mjlab.tasks.goalkeeper.mdp.terminations import (
     shot_recovery_finished,
+    excessive_body_tilt
 )
 
 from typing import Literal
@@ -120,6 +121,13 @@ def booster_k1_goalkeeper_env_cfg(
         func=shot_recovery_finished,
         params={
             "recovery_duration_s": settings.recovery_duration_s,
+        },
+    )
+    cfg.terminations["excessive_body_tilt"] = TerminationTermCfg(
+        func=excessive_body_tilt,
+        params={
+            "robot_name": "robot",
+            "max_tilt_deg": 60.0,
         },
     )
 
