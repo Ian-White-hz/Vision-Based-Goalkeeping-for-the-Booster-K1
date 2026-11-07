@@ -19,6 +19,13 @@ from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
 
 settings = FullGoalSettings()
 
+try:
+    sample_six_region_shots(1, settings, regions=torch.tensor([0.0]))
+except ValueError as error:
+    assert "int64" in str(error)
+else:
+    raise AssertionError("Expected non-int64 shot categories to fail")
+
 sample = sample_six_region_shots(
     6,
     settings,
@@ -28,18 +35,19 @@ sample = sample_six_region_shots(
 
 target = sample["target_position_e"]
 goal_target = sample["goal_target_position_e"]
-bounds = torch.tensor(settings.six_region_bounds)
+bounds = torch.tensor(settings.intercept_region_bounds)
 
 torch.testing.assert_close(
     sample["region"],
     torch.arange(6),
 )
 
-assert (goal_target[:, 1] >= bounds[:, 0]).all()
-assert (goal_target[:, 1] <= bounds[:, 1]).all()
-assert (goal_target[:, 2] >= bounds[:, 2]).all()
-assert (goal_target[:, 2] <= bounds[:, 3]).all()
+assert (target[:, 1] >= bounds[:, 0]).all()
+assert (target[:, 1] <= bounds[:, 1]).all()
+assert (target[:, 2] >= bounds[:, 2]).all()
+assert (target[:, 2] <= bounds[:, 3]).all()
 assert (sample["velocity"][:, 0] < 0.0).all()
+assert sample["is_rolling"].tolist() == [False, False, False, False, True, True]
 
 for value in sample.values():
     assert torch.isfinite(value).all()
@@ -59,9 +67,7 @@ torch.testing.assert_close(
 )
 
 assert (sample["intercept_time"] > 0.0).all()
-assert (
-    sample["intercept_time"] < sample["flight_time"]
-).all()
+assert (sample["intercept_time"] < sample["flight_time"]).all()
 
 for position_key, time_key in (
     ("target_position_e", "intercept_time"),
@@ -69,11 +75,9 @@ for position_key, time_key in (
 ):
     time = sample[time_key]
 
-    reconstructed = (
-        sample["start_position_e"]
-        + sample["velocity"] * time[:, None]
-    )
-    reconstructed[:, 2] -= 0.5 * 9.81 * time.square()
+    reconstructed = sample["start_position_e"] + sample["velocity"] * time[:, None]
+    ballistic = ~sample["is_rolling"]
+    reconstructed[ballistic, 2] -= 0.5 * 9.81 * time[ballistic].square()
 
     torch.testing.assert_close(
         reconstructed,
@@ -81,6 +85,25 @@ for position_key, time_key in (
         atol=1e-5,
         rtol=1e-5,
     )
+
+# Distribution-level contract: at least 10,000 valid shots per category.
+many_regions = torch.arange(60_000) % 6
+many = sample_six_region_shots(
+    len(many_regions),
+    settings,
+    regions=many_regions,
+    generator=torch.Generator().manual_seed(7),
+)
+many_bounds = bounds[many_regions]
+many_target = many["target_position_e"]
+assert (
+    (many_target[:, 1] >= many_bounds[:, 0])
+    & (many_target[:, 1] <= many_bounds[:, 1])
+    & (many_target[:, 2] >= many_bounds[:, 2])
+    & (many_target[:, 2] <= many_bounds[:, 3])
+).all()
+assert (~many["is_rolling"][:4]).any()
+assert many["is_rolling"][many_regions >= 4].all()
 
 cfg = booster_k1_goalkeeper_env_cfg(
     num_envs=2,
@@ -119,19 +142,17 @@ try:
         ball.data.root_link_lin_vel_w,
         shots["velocity"],
     )
-    torch.testing.assert_close(
-        ball.data.root_link_ang_vel_w,
-        torch.zeros_like(ball.data.root_link_ang_vel_w),
-    )
+    expected_ang_vel = torch.zeros_like(ball.data.root_link_ang_vel_w)
+    rolling = shots["is_rolling"]
+    expected_ang_vel[rolling, 0] = -shots["velocity"][rolling, 1] / settings.ball_radius
+    expected_ang_vel[rolling, 1] = shots["velocity"][rolling, 0] / settings.ball_radius
+    torch.testing.assert_close(ball.data.root_link_ang_vel_w, expected_ang_vel)
     assert shots["region"].dtype == torch.long
 
     # 局部 reset 不应改变另一个环境的球或记录。
     previous_position = ball.data.root_link_pos_w[1].clone()
     previous_velocity = ball.data.root_link_lin_vel_w[1].clone()
-    previous_records = {
-        name: value[1].clone()
-        for name, value in shots.items()
-    }
+    previous_records = {name: value[1].clone() for name, value in shots.items()}
 
     env.reset(env_ids=torch.tensor([0], device=env.device))
 
@@ -155,9 +176,7 @@ try:
 
     success_cfg = env.reward_manager.get_term_cfg("success")
 
-    assert tuple(
-        reach_cfg.params["hand_cfg"].site_names
-    ) == ("left_hand", "right_hand")
+    assert tuple(reach_cfg.params["hand_cfg"].site_names) == ("left_hand", "right_hand")
 
     action = torch.zeros(
         (env.num_envs, env.action_manager.total_action_dim),
@@ -178,21 +197,38 @@ try:
         if terminated.any().item() or truncated.any().item():
             break
 
-        raw_success = success_cfg.func(
-            env, **success_cfg.params
-        )
+        raw_success = success_cfg.func(env, **success_cfg.params)
 
         assert raw_success.shape == (env.num_envs,)
         assert torch.isfinite(raw_success).all()
         assert (
-            (raw_success == 0.0)
-            | (raw_success == 1.0)
-            | (raw_success == 2.0)
+            (raw_success == 0.0) | (raw_success == 1.0) | (raw_success == 2.0)
         ).all()
 
     print("ee_reach 原始奖励:", raw_reach)
     print("ee_reach 环境接入检查通过")
     print("success 原始奖励:", raw_success)
+
+    _, reset_extras = env.reset(env_ids=torch.tensor([0], device=env.device))
+    metric_logs = {
+        key: value
+        for key, value in reset_extras["log"].items()
+        if key.startswith("Episode_Metrics/Goalkeeper/")
+    }
+    assert len(metric_logs) == 24
+    coverage = [
+        metric_logs[f"Episode_Metrics/Goalkeeper/{name}/coverage"]
+        for name in (
+            "lefthand",
+            "righthand",
+            "leftjump",
+            "rightjump",
+            "leftstep",
+            "rightstep",
+        )
+    ]
+    torch.testing.assert_close(torch.stack(coverage).sum(), torch.tensor(1.0))
+    print("六类 coverage/save/goal/fall episode metrics reset 日志检查通过")
 
 finally:
     env.close()

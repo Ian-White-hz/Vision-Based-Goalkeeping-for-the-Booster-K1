@@ -3,10 +3,7 @@ from dataclasses import fields
 
 from mjlab.rl import RslRlModelCfg
 
-from booster_mjlab.rl.config import(
-    RslRlOnPolicyRunnerCfg,
-    RslRlPpoAlgorithmCfg
-)
+from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 from booster_mjlab.amp.runners.categorical_runner_cfg import (
     CategoricalAmpCfg,
@@ -26,9 +23,7 @@ def booster_k1_goalkeeper_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             activation="relu",
             obs_normalization=True,
             distribution_cfg={
-                "class_name": (
-                    "rsl_rl.modules.distribution:GaussianDistribution"
-                ),
+                "class_name": ("rsl_rl.modules.distribution:GaussianDistribution"),
                 "init_std": 1.0,
             },
         ),
@@ -59,6 +54,7 @@ def booster_k1_goalkeeper_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         upload_model=False,
     )
 
+
 def booster_k1_goalkeeper_amp_runner_cfg() -> CategoricalAmpRunnerCfg:
     base = booster_k1_goalkeeper_ppo_runner_cfg()
 
@@ -78,8 +74,13 @@ def booster_k1_goalkeeper_amp_runner_cfg() -> CategoricalAmpRunnerCfg:
             style_weight=0.4,
             hidden_layer_sizes=(512, 256),
             dataset_root="artifacts/goalkeeper_k1/serial",
-            expert_sampler_factory=None,
-            motion_id_reader=None,
+            expert_sampler_factory=(
+                "booster_mjlab.tasks.goalkeeper.amp_interfaces:"
+                "create_goalkeeper_expert_sampler"
+            ),
+            motion_id_reader=(
+                "booster_mjlab.tasks.goalkeeper.amp_interfaces:get_amp_motion_ids"
+            ),
         ),
         experiment_name="k1_goalkeeper_amp",
         num_steps_per_env=base.num_steps_per_env,

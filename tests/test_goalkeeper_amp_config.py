@@ -1,4 +1,4 @@
-import mjlab  # 先初始化 mjlab，再加载项目任务配置。
+import mjlab  # noqa: F401 -- 先初始化 mjlab，再加载项目任务配置。
 
 from dataclasses import asdict
 
@@ -38,8 +38,8 @@ assert "amp" not in cfg.obs_groups["critic"]
 assert cfg.experiment_name == "k1_goalkeeper_amp"
 assert cfg.amp.style_weight == 0.4
 assert cfg.amp.hidden_layer_sizes == (512, 256)
-assert cfg.amp.expert_sampler_factory is None
-assert cfg.amp.motion_id_reader is None
+assert cfg.amp.expert_sampler_factory.endswith(":create_goalkeeper_expert_sampler")
+assert cfg.amp.motion_id_reader.endswith(":get_amp_motion_ids")
 
 # 不同配置实例之间不能相互影响。
 another = booster_k1_goalkeeper_amp_runner_cfg()

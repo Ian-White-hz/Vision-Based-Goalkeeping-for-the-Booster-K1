@@ -15,6 +15,7 @@ from booster_mjlab.motion.goalkeeper_retarget import (
     RetargetOptions,
     retarget_clip,
 )
+from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
 
 
 def save_motion(path, motion):
@@ -168,6 +169,8 @@ def main():
         "options": asdict(options),
         "root_rotation_order": "xyzw (MotionFile); wxyz only when writing MuJoCo qpos",
         "joint_layout": {"serial": 22, "parallel": 34},
+        "joint_names": list(K1_JOINT_ORDER),
+        "motion_id_map": {name: index for index, name in enumerate(CLIP_NAMES)},
         "reports": reports,
         "validation_scope": "Kinematic reference assets, not dynamically validated policies",
     }

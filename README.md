@@ -93,6 +93,42 @@ dataset, retargeted onto the parallel-ankle K1:
 For offline conversion of the Humanoid-Goalkeeper G1 reference motions to K1,
 see [Goalkeeper motion retargeting](docs/goalkeeper_retargeting.md).
 
+### Goalkeeper AMP
+
+Prepare the six category-conditioned serial K1 clips from the official
+Humanoid-Goalkeeper checkout:
+
+```bash
+uv run retarget-goalkeeper \
+  --source-repo ../Humanoid-Goalkeeper \
+  --output-dir artifacts/goalkeeper_k1
+```
+
+The categorical AMP task consumes raw absolute joint angles in
+`K1_JOINT_ORDER`; its actor and critic observations are unchanged from the PPO
+goalkeeper baseline. Train either task with:
+
+```bash
+uv run train Mjlab-Goalkeeper-AMP-Flat-Booster-K1 --env.scene.num-envs 32
+uv run train Mjlab-Goalkeeper-Flat-Booster-K1 --env.scene.num-envs 32
+```
+
+Validate the six clips and render expert/shot distributions before training:
+
+```bash
+uv run diagnose-goalkeeper-amp \
+  --dataset-root artifacts/goalkeeper_k1/serial \
+  --output-dir artifacts/goalkeeper_amp_diagnostics
+```
+
+The diagnostic output contains `summary.json`, `shot_intercepts.png`, and
+`expert_joint_ranges.png`. Both training tasks log per-category `coverage`,
+`save`, `goal`, and `fall` episode metrics. Compute each conditional event rate
+as its event total divided by the matching category's `coverage` total; samples
+from the other five categories are not failures. Generated motion assets and
+diagnostics remain local under `artifacts/`; preserve the upstream CC BY-NC-SA
+4.0 attribution when redistributing derived clips.
+
 Velocity tasks come in `Flat` and `Rough` terrain variants, optionally with `-Amp-` (motion prior) and
 `-DA-` (symmetry data augmentation). Tasks suffixed `-Parallel` use the parallel-linkage ankle model of the K1.
 Tracking tasks run on flat terrain. List them all with:

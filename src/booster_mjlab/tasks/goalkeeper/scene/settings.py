@@ -31,42 +31,60 @@ class FullGoalSettings:
     ball_x_bounds: tuple[float, float] = (-2.0, 5.0)
     ball_y_limit: float = 3.0
     recovery_duration_s: float = 2.0
+    fixed_motion_id: int | None = None
 
-    six_region_bounds: tuple[
-        tuple[float, float, float, float], ...
-    ] = (
+    intercept_region_bounds: tuple[tuple[float, float, float, float], ...] = (
         (0.15, 0.65, 0.35, 0.60),
         (-0.65, -0.15, 0.35, 0.60),
         (0.20, 0.70, 0.70, 0.90),
         (-0.70, -0.20, 0.70, 0.90),
-        (0.15, 0.65, 0.13, 0.25),
-        (-0.65, -0.15, 0.13, 0.25),
+        (0.15, 0.65, 0.11, 0.25),
+        (-0.65, -0.15, 0.11, 0.25),
     )
 
     def __post_init__(self):
         for name in (
-            "start_x_range", 
-            "start_y_range", 
+            "start_x_range",
+            "start_y_range",
             "speed_range",
             "start_z_range",
             "flight_time_range",
             "ball_x_bounds",
         ):
             values = tuple(getattr(self, name))
-            if len(values) != 2 or not all(math.isfinite(v) for v in values) or values[0] > values[1]:
+            if (
+                len(values) != 2
+                or not all(math.isfinite(v) for v in values)
+                or values[0] > values[1]
+            ):
                 raise ValueError(f"Invalid {name}")
             object.__setattr__(self, name, values)
         friction = tuple(self.ball_friction)
         if len(friction) != 3 or any(not math.isfinite(v) or v < 0 for v in friction):
             raise ValueError("Invalid ball_friction")
         object.__setattr__(self, "ball_friction", friction)
-        for name in ("goal_width", "goal_height", "post_radius", "ball_radius", "ball_mass",
-                     "robot_x_limit", "robot_y_limit", "stop_speed", "stop_hold_s", "stop_distance", "ball_y_limit"):
+        for name in (
+            "goal_width",
+            "goal_height",
+            "post_radius",
+            "ball_radius",
+            "ball_mass",
+            "robot_x_limit",
+            "robot_y_limit",
+            "stop_speed",
+            "stop_hold_s",
+            "stop_distance",
+            "ball_y_limit",
+        ):
             if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be finite and positive")
         if not math.isfinite(self.goal_x) or self.goal_x >= -self.robot_x_limit:
             raise ValueError("Goal line must be behind the guard region")
-        if not math.isfinite(self.target_margin) or self.target_margin < 0 or self.target_half_width <= 0:
+        if (
+            not math.isfinite(self.target_margin)
+            or self.target_margin < 0
+            or self.target_half_width <= 0
+        ):
             raise ValueError("Goal must accommodate the ball and target margin")
         if not math.isfinite(self.root_reset_z_offset):
             raise ValueError("Invalid reset height offset")
@@ -74,11 +92,32 @@ class FullGoalSettings:
             raise ValueError("Shots must start in front with positive speed")
         if self.ball_x_bounds[0] >= self.ball_x_bounds[1]:
             raise ValueError("ball_x_bounds must be strictly increasing")
+        if self.fixed_motion_id is not None and (
+            isinstance(self.fixed_motion_id, bool)
+            or not isinstance(self.fixed_motion_id, int)
+            or self.fixed_motion_id not in range(6)
+        ):
+            raise ValueError("fixed_motion_id must be None or an integer in [0, 5]")
+        bounds = tuple(tuple(region) for region in self.intercept_region_bounds)
+        if len(bounds) != 6 or any(
+            len(region) != 4
+            or not all(math.isfinite(value) for value in region)
+            or region[0] > region[1]
+            or region[2] > region[3]
+            for region in bounds
+        ):
+            raise ValueError("intercept_region_bounds must contain six valid bounds")
+        object.__setattr__(self, "intercept_region_bounds", bounds)
 
     @property
     def target_half_width(self):
         # Preserve the baseline's nominal-width convention. Posts are visual.
         return self.goal_width / 2 - self.ball_radius - self.target_margin
+
+    @property
+    def six_region_bounds(self):
+        """Deprecated compatibility alias; regions are defined at intercept_x."""
+        return self.intercept_region_bounds
 
     @property
     def episode_length_s(self):

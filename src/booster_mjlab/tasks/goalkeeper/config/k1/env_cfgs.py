@@ -1,21 +1,25 @@
-from copy import deepcopy
+from typing import Literal
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import (
     EventTermCfg,
+    MetricsTermCfg,
     RewardTermCfg,
     SceneEntityCfg,
-    TerminationTermCfg
+    TerminationTermCfg,
 )
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 
-from mjlab.managers.observation_manager import ObservationGroupCfg
+from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 
 from booster_mjlab.robots import K1_ACTION_SCALE, get_k1_robot_cfg
-from booster_mjlab.tasks.goalkeeper.goalkeeper_env_cfg import(
-    make_goalkeeper_env_cfg
+from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
+from booster_mjlab.tasks.goalkeeper.amp_interfaces import (
+    MOTION_NAMES,
+    amp_joint_positions,
 )
+from booster_mjlab.tasks.goalkeeper.goalkeeper_env_cfg import make_goalkeeper_env_cfg
 from booster_mjlab.tasks.goalkeeper.scene.scene_cfg import (
     make_goalkeeper_scene_cfg,
 )
@@ -23,7 +27,6 @@ from booster_mjlab.tasks.goalkeeper.scene.settings import (
     FullGoalSettings,
 )
 from booster_mjlab.tasks.goalkeeper.scene.events import (
-    sample_shots,
     launch_shots,
     launch_six_region_shots,
 )
@@ -46,24 +49,27 @@ from booster_mjlab.tasks.goalkeeper.mdp.outcomes import (
 )
 from booster_mjlab.tasks.goalkeeper.mdp.terminations import (
     shot_recovery_finished,
-    excessive_body_tilt
+    excessive_body_tilt,
+)
+from booster_mjlab.tasks.goalkeeper.mdp.metrics import (
+    category_coverage,
+    category_fall,
+    category_goal,
+    category_save,
 )
 
-from typing import Literal
 
 def booster_k1_goalkeeper_env_cfg(
     *,
     num_envs: int = 1,
     settings: FullGoalSettings | None = None,
     shot_mode: Literal["rolling", "six_region"] = "six_region",
-) ->ManagerBasedRlEnvCfg:
+) -> ManagerBasedRlEnvCfg:
     if settings is None:
         settings = FullGoalSettings()
 
     scene = make_goalkeeper_scene_cfg(
-        robot_cfg=get_k1_robot_cfg(),
-        settings=settings,
-        num_envs=num_envs
+        robot_cfg=get_k1_robot_cfg(), settings=settings, num_envs=num_envs
     )
 
     cfg = make_goalkeeper_env_cfg(
@@ -73,8 +79,6 @@ def booster_k1_goalkeeper_env_cfg(
     )
 
     # 物理200Hz, 机器人控制50Hz
-    cfg.sim.mujoco.timestep = 0.005
-
     cfg.sim.mujoco.timestep = 0.005
 
     # Viser 从地面上方观察场景。
@@ -164,8 +168,8 @@ def booster_k1_goalkeeper_env_cfg(
             "robot_name": "robot",
             "sensor_name": "feet_ground_contact",
             "contact_threshold": 1.0,
-            "coefficient": 10.0
-        }
+            "coefficient": 10.0,
+        },
     )
     cfg.rewards["penalize_sharpcontact"] = RewardTermCfg(
         func=excessive_foot_contact_from_env,
@@ -173,7 +177,7 @@ def booster_k1_goalkeeper_env_cfg(
         params={
             "sensor_name": "feet_ground_contact",
             "max_contact_force": 1000.0,
-        }
+        },
     )
 
     recovery_terms = (
@@ -192,7 +196,7 @@ def booster_k1_goalkeeper_env_cfg(
                 "reference_x": 0.0,
                 "velocity_change_threshold": 2.0,
                 "coefficient": 3.0,
-            }
+            },
         )
     cfg.rewards["postupperdofpos"] = RewardTermCfg(
         func=post_upper_joint_position_from_env,
@@ -211,7 +215,7 @@ def booster_k1_goalkeeper_env_cfg(
             "reference_x": 0.0,
             "velocity_change_threshold": 2.0,
             "coefficient": 1.0,
-        }
+        },
     )
     cfg.rewards["eereach"] = RewardTermCfg(
         func=ee_reach_from_env,
@@ -242,7 +246,7 @@ def booster_k1_goalkeeper_env_cfg(
                 preserve_order=True,
             ),
             "strict_threshold": 0.15,
-        }
+        },
     )
     cfg.rewards["successland"] = RewardTermCfg(
         func=JumpLandingReward,
@@ -256,21 +260,59 @@ def booster_k1_goalkeeper_env_cfg(
         },
     )
 
+    for motion_id, motion_name in enumerate(MOTION_NAMES):
+        metric_params = {"motion_id": motion_id}
+        cfg.metrics[f"Goalkeeper/{motion_name}/coverage"] = MetricsTermCfg(
+            func=category_coverage,
+            params=metric_params,
+            reduce="last",
+        )
+        cfg.metrics[f"Goalkeeper/{motion_name}/save"] = MetricsTermCfg(
+            func=category_save,
+            params=metric_params,
+            reduce="last",
+        )
+        cfg.metrics[f"Goalkeeper/{motion_name}/goal"] = MetricsTermCfg(
+            func=category_goal,
+            params=metric_params,
+            reduce="last",
+        )
+        cfg.metrics[f"Goalkeeper/{motion_name}/fall"] = MetricsTermCfg(
+            func=category_fall,
+            params=metric_params,
+            reduce="last",
+        )
+
     return cfg
+
 
 def booster_k1_goalkeeper_amp_env_cfg(
     *,
-    amp_observation: ObservationGroupCfg,
     num_envs: int = 1,
     settings: FullGoalSettings | None = None,
 ) -> ManagerBasedRlEnvCfg:
-    """复用 goalkeeper 环境，接入外部提供的 AMP 观测组。"""
+    """Reuse the goalkeeper task with a raw absolute-joint AMP group."""
     cfg = booster_k1_goalkeeper_env_cfg(
         num_envs=num_envs,
         settings=settings,
         shot_mode="six_region",
     )
 
-    cfg.observations["amp"] = deepcopy(amp_observation)
+    cfg.observations["amp"] = ObservationGroupCfg(
+        terms={
+            "joint_pos": ObservationTermCfg(
+                func=amp_joint_positions,
+                params={
+                    "asset_cfg": SceneEntityCfg(
+                        "robot",
+                        joint_names=K1_JOINT_ORDER,
+                        preserve_order=True,
+                    )
+                },
+            )
+        },
+        concatenate_terms=True,
+        enable_corruption=False,
+    )
 
     return cfg
