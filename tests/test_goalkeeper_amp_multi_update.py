@@ -1,103 +1,48 @@
 import torch
 
-from booster_mjlab.amp.algorithms.categorical_amp import (
-    CategoricalAmpUpdater,
-)
+from booster_mjlab.amp.algorithms.categorical_amp import CategoricalAmpUpdater
 from booster_mjlab.amp.modules.categorical_discriminator import (
     CategoricalAmpDiscriminator,
 )
-from booster_mjlab.amp.modules.categorical_replay import (
-    CategoricalAmpReplayBuffer,
-)
-
-
-class FakeExpertSampler:
-    def sample(self, motion_ids, *, frame_dt):
-        assert frame_dt == 0.02
-
-        values = motion_ids.to(torch.float32) + 0.2
-
-        return values[:, None, None].expand(-1, 2, 22).clone()
-
+from booster_mjlab.amp.modules.goalkeeper_normalizer import GoalkeeperAmpNormalizer
+from goalkeeper_amp_test_utils import FakeExpertSampler
 
 torch.manual_seed(42)
+model = CategoricalAmpDiscriminator(hidden_layer_sizes=(16, 8))
+sampler = FakeExpertSampler()
+updater = CategoricalAmpUpdater(model, sampler, frame_dt=0.02)
+assert all(d.amp_normalizer is None for d in model.discriminators)
+assert sum(isinstance(m, GoalkeeperAmpNormalizer) for m in model.modules()) == 1
+assert set(k for k in model.state_dict() if "amp_normalizer" in k) == {
+    "amp_normalizer.mean",
+    "amp_normalizer.var",
+    "amp_normalizer.count",
+}
 
-model = CategoricalAmpDiscriminator(
-    empirical_normalization=True,
+# Unequal class counts detect accidental class-balanced resampling.
+ids = torch.tensor([0, 0, 0, 3, 5, 5], dtype=torch.int64)
+features = torch.arange(6, dtype=torch.float32)[:, None].expand(-1, 44).clone() * 0.1
+valid = torch.tensor([True, True, True, True, False, True])
+reference = GoalkeeperAmpNormalizer(44)
+normalized_policy = reference(features[valid])
+expert_values = ids[valid].float() * 0.05 + 0.2
+normalized_expert = reference(expert_values[:, None].expand(-1, 44).clone())
+reference.update(normalized_policy)
+reference.update(normalized_expert)
+
+loss, metrics = updater.compute_loss(features, ids, valid)
+assert set(metrics) == {0, 3, 5}
+assert [request.tolist() for request in sampler.requests] == [[0, 0, 0], [3], [5]]
+assert [metrics[g]["sample_count"] for g in (0, 3, 5)] == [3, 1, 1]
+torch.testing.assert_close(
+    loss.detach(), torch.tensor(sum(m["total_loss"] for m in metrics.values()))
 )
-replay = CategoricalAmpReplayBuffer(capacity_per_class=16)
-optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-3)
-
-updater = CategoricalAmpUpdater(
-    model,
-    replay,
-    FakeExpertSampler(),
-    optimizer,
-    frame_dt=0.02,
+for key, value in model.amp_normalizer.state_dict().items():
+    torch.testing.assert_close(value, reference.state_dict()[key], rtol=0, atol=0)
+assert model.amp_normalizer.count.item() == 10.0001
+loss.backward()
+assert all(
+    (any(p.grad is not None for p in d.parameters())) == (g in (0, 3, 5))
+    for g, d in enumerate(model.discriminators)
 )
-
-
-def insert_class(motion_id):
-    replay.insert(
-        torch.full((8, 44), motion_id - 0.2),
-        torch.full((8,), motion_id, dtype=torch.int64),
-    )
-
-
-# 第一轮：只有类别 0、3。
-insert_class(0)
-insert_class(3)
-
-results1 = updater.update_all(batch_size=8)
-assert set(results1) == {0, 3}
-
-for motion_id, network in enumerate(model.discriminators):
-    normalizer = network.amp_normalizer
-    assert normalizer is not None
-
-    if motion_id in (0, 3):
-        # 8 个 expert + 8 个 policy。
-        assert normalizer.count.item() == 16
-
-        torch.testing.assert_close(
-            normalizer.mean,
-            torch.full((44,), float(motion_id)),
-        )
-        torch.testing.assert_close(
-            normalizer.std,
-            torch.full((44,), 0.2),
-        )
-    else:
-        assert normalizer.count.item() == 0
-
-# 第二轮：补齐剩下的类别。
-for motion_id in (1, 2, 4, 5):
-    insert_class(motion_id)
-
-results2 = updater.update_all(batch_size=8)
-assert set(results2) == set(range(6))
-
-for motion_id, network in enumerate(model.discriminators):
-    normalizer = network.amp_normalizer
-    assert normalizer is not None
-
-    expected_count = 32 if motion_id in (0, 3) else 16
-    assert normalizer.count.item() == expected_count
-
-    torch.testing.assert_close(
-        normalizer.mean,
-        torch.full((44,), float(motion_id)),
-    )
-    torch.testing.assert_close(
-        normalizer.std,
-        torch.full((44,), 0.2),
-    )
-
-for metrics in results2.values():
-    assert torch.isfinite(
-        torch.tensor(list(metrics.values()))
-    ).all().item()
-
-print("第一轮更新类别:", sorted(results1))
-print("第二轮更新类别:", sorted(results2))
-print("六类调度与归一化隔离检查通过")
+print("共享归一化、同快照归一化、normalized 更新顺序、类别样本比例和 loss 求和检查通过")

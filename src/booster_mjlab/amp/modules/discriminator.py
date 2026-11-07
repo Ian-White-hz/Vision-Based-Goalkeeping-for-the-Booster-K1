@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 from torch import autograd
@@ -98,26 +99,83 @@ class Discriminator(nn.Module):
         s = h.float().std(dim=0, unbiased=False).mean()
         return s.expand(h.shape[0], 1).to(h.dtype)
 
-    def predict_reward(self, history: torch.Tensor) -> torch.Tensor:
-        """Predict reward based on discriminator output.
+    # def predict_reward(self, history: torch.Tensor) -> torch.Tensor:
+    #     """Predict reward based on discriminator output.
 
-        Args:
-            history: Flattened K-frame AMP observation history.
+    #     Args:
+    #         history: Flattened K-frame AMP observation history.
 
-        Returns:
-            Computed adversarial reward.
+    #     Returns:
+    #         Computed adversarial reward.
 
-        Note:
-            Normalization is handled internally by forward() if enabled.
-        """
+    #     Note:
+    #         Normalization is handled internally by forward() if enabled.
+    #     """
+    #     with torch.no_grad():
+    #         logits = self.forward(history)
+    #         if self.loss_type == "wasserstein":
+    #             logits = torch.tanh(self.eta_wgan * logits)
+    #             reward = torch.exp(logits)
+    #         else:
+    #             # softplus(x) = log(1 + exp(x)) = -log(1 - sigmoid(x))
+    #             reward = F.softplus(logits)
+    #         return (self.reward_scale * reward).squeeze(-1)
+
+    def predict_reward(
+        self,
+        history: torch.Tensor,
+        *,
+        num_samples: int = 20,
+        sigma: float = 0.3,
+    ) -> torch.Tensor:
         with torch.no_grad():
+            if self.loss_type == "least_squares":
+                if num_samples <= 0:
+                    raise ValueError("num_samples must be positive")
+
+                if not math.isfinite(sigma) or sigma < 0.0:
+                    raise ValueError(
+                        "sigma must be finite and nonnegative"
+                    )
+
+                normalized = self._normalize(history)
+                batch_size = normalized.shape[0]
+
+                noise = torch.randn(
+                    batch_size,
+                    num_samples,
+                    self.input_dim,
+                    device=normalized.device,
+                    dtype=normalized.dtype,
+                ) * sigma
+
+                candidates = normalized[:, None, :] + noise
+
+                scores = self._forward_normalized(
+                    candidates.reshape(-1, self.input_dim)
+                ).reshape(batch_size, num_samples)
+
+                best_squared_error = (
+                    (scores - 1.0)
+                    .square()
+                    .min(dim=1)
+                    .values
+                )
+
+                reward = (
+                    1.0 - 0.25 * best_squared_error
+                ).clamp_min(0.0)
+
+                return self.reward_scale * reward
+
             logits = self.forward(history)
+
             if self.loss_type == "wasserstein":
                 logits = torch.tanh(self.eta_wgan * logits)
                 reward = torch.exp(logits)
             else:
-                # softplus(x) = log(1 + exp(x)) = -log(1 - sigmoid(x))
                 reward = F.softplus(logits)
+
             return (self.reward_scale * reward).squeeze(-1)
 
     def compute_loss(
@@ -195,7 +253,15 @@ class Discriminator(nn.Module):
                 retain_graph=True,
                 only_inputs=True,
             )[0]
-            return 0.5 * lambda_ * (grad.pow(2).sum(dim=1)).mean()
+
+            squared_gradient_norm = (
+                grad.square().sum(dim=1).mean()
+            )
+
+            if self.loss_type == "least_squares":
+                return lambda_ * squared_gradient_norm
+
+            return 0.5 * lambda_ * squared_gradient_norm
 
     def update_normalization(self, *batches: torch.Tensor) -> None:
         """Update empirical normalization statistics from raw AMP histories.

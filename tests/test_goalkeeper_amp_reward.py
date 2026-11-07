@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 
 from booster_mjlab.amp.modules.categorical_discriminator import (
     CategoricalAmpDiscriminator,
@@ -18,14 +17,9 @@ with torch.no_grad():
         discriminator.linear.weight.zero_()
         discriminator.linear.bias.fill_(float(motion_id))
 
-        discriminator.update_normalization(
-            torch.full((2, 44), float(motion_id)),
-        )
+    model.update_normalization(torch.zeros(2, 44))
 
-state_before = {
-    name: value.clone()
-    for name, value in model.state_dict().items()
-}
+state_before = {name: value.clone() for name, value in model.state_dict().items()}
 
 windows = torch.randn(3, 2, 22, requires_grad=True)
 valid_mask = torch.tensor([True, False, True])
@@ -38,11 +32,13 @@ rewards = predict_valid_amp_rewards(
     motion_ids_before,
 )
 
-expected = torch.tensor([
-    F.softplus(torch.tensor(0.0)).item(),
-    0.0,
-    F.softplus(torch.tensor(5.0)).item(),
-])
+expected = torch.tensor(
+    [
+        0.75,  # 类别 0：固定输出 0。
+        0.0,  # 无效窗口，不计算 AMP 奖励。
+        0.0,  # 类别 5：固定输出 5，平方奖励被截断为 0。
+    ]
+)
 
 assert rewards.shape == (3,)
 torch.testing.assert_close(rewards, expected)

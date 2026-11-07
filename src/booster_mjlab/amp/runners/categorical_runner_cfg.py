@@ -1,29 +1,40 @@
 from dataclasses import dataclass, field
 
-from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg
+from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 
 @dataclass
 class CategoricalAmpCfg:
     style_weight: float = 0.4
-    capacity_per_class: int = 10_000
-    learning_rate: float = 1.0e-3
-    batch_size: int = 256
-    gradient_penalty_coef: float = 10.0
+    gradient_penalty_coef: float = 0.5
     empirical_normalization: bool = True
-
+    hidden_layer_sizes: tuple[int, ...] = (512, 256)
+    logit_init_scale: float = 1.0
+    trunk_weight_decay: float = 1.0e-3
+    head_weight_decay: float = 0.1
     dataset_root: str = "artifacts/goalkeeper_k1/serial"
 
-    # Part B 提供实际入口后填写，不预设不存在的模块路径。
     expert_sampler_factory: str | None = None
+    """Trusted module:object called as factory(dataset_root=..., device=...)."""
     motion_id_reader: str | None = None
+    """Trusted module:object called as reader(env.unwrapped) -> int64 (N,).
+
+    Set both entries for lazy binding on learn(), or bind both objects manually.
+    Actor-only load and inference do not resolve either entry.
+    """
+
+
+@dataclass
+class CategoricalAmpPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
+    class_name: str = "booster_mjlab.amp.algorithms.categorical_ppo:CategoricalAmpPPO"
+
 
 @dataclass
 class CategoricalAmpRunnerCfg(RslRlOnPolicyRunnerCfg):
     class_name: str = "CategoricalAmpOnPolicyRunner"
-
-    amp: CategoricalAmpCfg = field(
-        default_factory=CategoricalAmpCfg,
+    algorithm: CategoricalAmpPpoAlgorithmCfg = field(
+        default_factory=CategoricalAmpPpoAlgorithmCfg
     )
-
+    amp: CategoricalAmpCfg = field(default_factory=CategoricalAmpCfg)
     warm_start: bool = False
+    """Load Actor/Critic only into a fresh runner; keep a fresh AMP and Adam."""

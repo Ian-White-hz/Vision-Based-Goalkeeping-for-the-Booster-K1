@@ -42,6 +42,8 @@ def make_loss_function(loss_type: str, **kwargs) -> DiscriminatorLoss:
     elif normalized_type in {"wasserstein", "wgan"}:
         eta_wgan = kwargs.get("eta", 1.0)
         return WGANLoss(eta=eta_wgan)
+    elif normalized_type == "least_squares":
+        return LeastSquaresLoss()
     else:
         raise ValueError(
             f"Unsupported loss type: {loss_type}. Supported types are 'hinge', 'bce', and 'wasserstein'."
@@ -166,3 +168,24 @@ class WGANLoss(DiscriminatorLoss):
         data = alpha * expert + (1 - alpha) * policy
         offset = 1.0
         return data, offset
+
+class LeastSquaresLoss(DiscriminatorLoss):
+    """原 Goalkeeper 项目的判别器最小二乘损失。"""
+
+    def forward(
+        self,
+        policy_samples: torch.Tensor,
+        expert_samples: torch.Tensor,
+    ) -> torch.Tensor:
+        expert_loss = (expert_samples - 1.0).square().mean()
+        policy_loss = (policy_samples + 1.0).square().mean()
+
+        return expert_loss + policy_loss
+
+    def get_grad_penalty_data(
+        self,
+        expert_samples: torch.Tensor,
+        policy_samples: torch.Tensor,
+        device: torch.device,
+    ) -> tuple[torch.Tensor, float]:
+        return expert_samples.to(device), 0.0

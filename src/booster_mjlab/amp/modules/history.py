@@ -2,7 +2,7 @@ import torch
 
 
 class TwoFrameAmpHistory:
-    '''A class to maintain a history of two consecutive frames of AMP (Adaptive Motion Planning) data for each environment.'''
+    """Maintain two-frame Adversarial Motion Priors histories per environment."""
     def __init__(self, initial_q: torch.Tensor):
         if initial_q.ndim != 2 or initial_q.shape[1] != 22:
             raise ValueError(

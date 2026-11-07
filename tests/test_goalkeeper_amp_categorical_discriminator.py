@@ -7,6 +7,11 @@ from booster_mjlab.amp.modules.categorical_discriminator import (
 
 model = CategoricalAmpDiscriminator()
 
+assert all(
+    discriminator.loss_type == "least_squares"
+    for discriminator in model.discriminators
+)
+
 with torch.no_grad():
     for motion_id, discriminator in enumerate(model.discriminators):
         # 最后一层权重为零，输出就只由 bias 决定。
@@ -90,7 +95,7 @@ def check_one_class_update(target_id: int) -> None:
         expert_d=expert_scores,
         sample_amp_expert=expert_input,
         sample_amp_policy=policy_input,
-        lambda_=10.0,
+        lambda_=0.5,
     )
 
     total_loss = classification_loss + gradient_penalty

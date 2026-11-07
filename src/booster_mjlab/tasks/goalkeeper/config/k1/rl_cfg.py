@@ -1,8 +1,17 @@
+from copy import deepcopy
+from dataclasses import fields
+
 from mjlab.rl import RslRlModelCfg
 
 from booster_mjlab.rl.config import(
     RslRlOnPolicyRunnerCfg,
     RslRlPpoAlgorithmCfg
+)
+
+from booster_mjlab.amp.runners.categorical_runner_cfg import (
+    CategoricalAmpCfg,
+    CategoricalAmpPpoAlgorithmCfg,
+    CategoricalAmpRunnerCfg,
 )
 
 
@@ -48,4 +57,35 @@ def booster_k1_goalkeeper_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         save_interval=50,
         logger="tensorboard",
         upload_model=False,
+    )
+
+def booster_k1_goalkeeper_amp_runner_cfg() -> CategoricalAmpRunnerCfg:
+    base = booster_k1_goalkeeper_ppo_runner_cfg()
+
+    # 复用 PPO 超参数，但保留 AMP 算法自己的 class_name。
+    algorithm_params = {
+        item.name: deepcopy(getattr(base.algorithm, item.name))
+        for item in fields(base.algorithm)
+        if item.name != "class_name"
+    }
+
+    return CategoricalAmpRunnerCfg(
+        obs_groups=deepcopy(base.obs_groups),
+        actor=deepcopy(base.actor),
+        critic=deepcopy(base.critic),
+        algorithm=CategoricalAmpPpoAlgorithmCfg(**algorithm_params),
+        amp=CategoricalAmpCfg(
+            style_weight=0.4,
+            hidden_layer_sizes=(512, 256),
+            dataset_root="artifacts/goalkeeper_k1/serial",
+            expert_sampler_factory=None,
+            motion_id_reader=None,
+        ),
+        experiment_name="k1_goalkeeper_amp",
+        num_steps_per_env=base.num_steps_per_env,
+        max_iterations=base.max_iterations,
+        save_interval=base.save_interval,
+        logger=base.logger,
+        upload_model=base.upload_model,
+        warm_start=False,
     )

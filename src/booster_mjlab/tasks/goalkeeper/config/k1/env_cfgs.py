@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import (
@@ -7,6 +9,8 @@ from mjlab.managers import (
     TerminationTermCfg
 )
 from mjlab.sensor import ContactMatch, ContactSensorCfg
+
+from mjlab.managers.observation_manager import ObservationGroupCfg
 
 from booster_mjlab.robots import K1_ACTION_SCALE, get_k1_robot_cfg
 from booster_mjlab.tasks.goalkeeper.goalkeeper_env_cfg import(
@@ -251,5 +255,22 @@ def booster_k1_goalkeeper_env_cfg(
             "contact_threshold": 1.0,
         },
     )
+
+    return cfg
+
+def booster_k1_goalkeeper_amp_env_cfg(
+    *,
+    amp_observation: ObservationGroupCfg,
+    num_envs: int = 1,
+    settings: FullGoalSettings | None = None,
+) -> ManagerBasedRlEnvCfg:
+    """复用 goalkeeper 环境，接入外部提供的 AMP 观测组。"""
+    cfg = booster_k1_goalkeeper_env_cfg(
+        num_envs=num_envs,
+        settings=settings,
+        shot_mode="six_region",
+    )
+
+    cfg.observations["amp"] = deepcopy(amp_observation)
 
     return cfg

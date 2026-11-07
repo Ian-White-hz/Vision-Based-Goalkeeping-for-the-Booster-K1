@@ -35,9 +35,12 @@ def collect_categorical_amp_step(
     task_rewards = task_rewards.to(device)
     dones = dones.to(device)
 
-    amp_rewards = collector.finish_step(
-        next_obs["amp"],
-        dones.bool()
+    amp_rewards = collector.finish_step(next_obs["amp"], dones.bool())
+
+    alg.record_amp_transition(
+        collector.last_features,
+        collector.last_motion_ids,
+        collector.last_valid_mask,
     )
 
     total_rewards, task_component, style_component = mix_amp_rewards(
