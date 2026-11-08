@@ -1,0 +1,10 @@
+{
+  "models/ball_vision_v17/model.pt": "31132e29962c67be76a7d2803d525a6c27dace04948842867f7285c9ecffa7c6",
+  "models/ball_vision/model.pt": "aad329c828d6c7f618f84f7e59f8d32209e292b9f8fca7a58b9c460731b54566",
+  "models/goalkeeper_v20/model.pt": "732ef54e8b2040e5ab9f35d34bc51b8c07fe60ba4130fe1d39c0906c98d98051",
+  "models/goalkeeper_v24/model.pt": "f9fec31df0c5f472287aad78c6840acffb422938e6e8e89405e90ba33d4d7314",
+  "models/lateral_gait/model.pt": "0cbe47f3c52f7cdc851eb7b926c85b48ab09017590014d0b3de25c70469f615d",
+  "models/pose_endpoint/model.pt": "b09efc60e5ef83b8ee242893b4f62364cdd68cf11f01bf8d9477c4b513557aa0",
+  "models/receive_gait/model.pt": "6c1bbda8f607fe8044f7d6f3fc77c56de3499efe66b67c93f0e7dd431429468b",
+  "models/standing_entry/model.pt": "b80b1aa1f1a5bdb3a213813371f08dce5cc86e01eb2cc1148a3f491b9143a80e"
+}

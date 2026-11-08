@@ -1,0 +1,26 @@
+{
+  "algorithm": {
+    "actor": {
+      "hidden_dims": [
+        512,
+        256,
+        128
+      ],
+      "activation": "elu",
+      "obs_normalization": true,
+      "cnn_cfg": null,
+      "distribution_cfg": {
+        "class_name": "rsl_rl.modules.distribution:GaussianDistribution",
+        "init_std": 0.08,
+        "std_range": [
+          0.04,
+          0.14
+        ]
+      },
+      "rnn_type": null,
+      "rnn_hidden_dim": 256,
+      "rnn_num_layers": 1,
+      "class_name": "MLPModel"
+    }
+  }
+}

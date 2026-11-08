@@ -1,0 +1,10 @@
+{
+  "private_kinematics_only": true,
+  "frames": 3276,
+  "max_hand_error_m": 4.034117999026819e-16,
+  "endpoint_min_separation_m": 0.26999999999999996,
+  "endpoint_max_separation_m": 0.3700000000000001,
+  "source_sha256": "01c528f9f9fa0b35889ce1071dc27cf3d7a8d47dc525d6ba332caa9c662509f7",
+  "output_sha256": "de7e4517de339563b0451d423cac6bae6f9bb4fd16334a0e61e1f07220d7a93a",
+  "limitation": "Approximate foot outer width, with minimum 27cm hand-centre opening; physical short screen still required"
+}

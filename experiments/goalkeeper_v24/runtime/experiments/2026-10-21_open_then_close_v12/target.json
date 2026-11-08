@@ -1,0 +1,48 @@
+{
+  "user_speed_range_m_s": [
+    0.3,
+    1.0
+  ],
+  "increase_speed_only_after_passing_current_range": true,
+  "preserve_prior_versions": true,
+  "control_ball_input": "RGB camera estimated ball position and velocity; no ground truth ball targeting",
+  "proprioception": "joint state, IMU, support contacts and model-based robot COM are allowed",
+  "required_sequence": [
+    "RGB predict arrival",
+    "measured stable stop",
+    "prepare posture before first physical interception",
+    "real hand or body interception, without requiring a prior body impact",
+    "real bilateral grounded stable hold2s; no fall, goal, lift or numerical overflow"
+  ],
+  "current_subproblem": "user-requested exploratory full-goal-width random shots with lateral motion and anticipatory ground capture",
+  "next_subproblems": [
+    "slow rolling ball",
+    "independent random launch and goal target",
+    "balanced full goal coverage at 0.3 to 1.0 m/s"
+  ],
+  "forbidden_shortcuts": [
+    "per-step root or joint state writes",
+    "weld or ball attachment",
+    "lifting ball",
+    "diving or intentional falling",
+    "ball truth in controller inputs"
+  ],
+  "claim_limit": "finite independent testing can establish a measured operating range, not perfection on every possible shot",
+  "launch_width_m": 2.4,
+  "launch_y_half_width_m": 1.2,
+  "target_y_half_width_m": 1.07,
+  "start_x_range_m": [
+    3.0,
+    4.0
+  ],
+  "initial_speed_range_m_s": [
+    0.3,
+    0.4
+  ],
+  "expand_before_narrow_gate_passed": "Explicitly requested by user; exploratory training, not acceptance",
+  "display_markers": {
+    "start": "blue",
+    "goal_target": "yellow",
+    "initial_aim": "dashed; display only"
+  }
+}

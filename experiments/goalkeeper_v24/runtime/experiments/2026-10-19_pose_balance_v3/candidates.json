@@ -1,0 +1,504 @@
+{
+  "kind": "IK_and_open_loop_physical_screen_not_learned_capture",
+  "joint_names": [
+    "Left_Knee_Pitch",
+    "Right_Knee_Pitch",
+    "Left_Hip_Yaw",
+    "Right_Hip_Yaw",
+    "Left_Ankle_Pitch",
+    "Left_Ankle_Roll",
+    "Right_Ankle_Pitch",
+    "Right_Ankle_Roll",
+    "Left_Hip_Pitch",
+    "Right_Hip_Pitch",
+    "Left_Hip_Roll",
+    "Right_Hip_Roll",
+    "Left_Shoulder_Pitch",
+    "Left_Shoulder_Roll",
+    "Left_Elbow_Pitch",
+    "Left_Elbow_Yaw",
+    "Right_Shoulder_Pitch",
+    "Right_Shoulder_Roll",
+    "Right_Elbow_Pitch",
+    "Right_Elbow_Yaw",
+    "Head_Yaw",
+    "Head_Pitch"
+  ],
+  "ball_center": [
+    0.2,
+    0.0,
+    0.112
+  ],
+  "feet_reference": [
+    [
+      -0.022568488507079015,
+      0.09620000000000001,
+      0.03242629906572736
+    ],
+    [
+      -0.022568488507079015,
+      -0.09620000000000001,
+      0.03242629906572736
+    ]
+  ],
+  "poses": {
+    "baseline_deep": {
+      "joint_pos": {
+        "Left_Knee_Pitch": 1.6151137718225044,
+        "Right_Knee_Pitch": 1.6151898849755435,
+        "Left_Hip_Yaw": -0.023938751556874308,
+        "Right_Hip_Yaw": 0.03252126475553412,
+        "Left_Ankle_Pitch": -0.22403904455596726,
+        "Left_Ankle_Roll": -0.016398177666328343,
+        "Right_Ankle_Pitch": -0.22437303484480137,
+        "Right_Ankle_Roll": 0.0222628336481317,
+        "Left_Hip_Pitch": -2.040955347905249,
+        "Right_Hip_Pitch": -2.0405948121084307,
+        "Left_Hip_Roll": -0.0400103926350449,
+        "Right_Hip_Roll": 0.054331728308417676,
+        "Left_Shoulder_Pitch": -0.9510246382811576,
+        "Left_Shoulder_Roll": -1.5644999999999998,
+        "Left_Elbow_Pitch": 0.5676715040852108,
+        "Left_Elbow_Yaw": -0.6051273627496656,
+        "Right_Shoulder_Pitch": -0.951024637648401,
+        "Right_Shoulder_Roll": 1.5644999999999998,
+        "Right_Elbow_Pitch": 0.5676715057960627,
+        "Right_Elbow_Yaw": 0.6051273649223814,
+        "Head_Yaw": -0.0009359837353839205,
+        "Head_Pitch": -0.06606320312484674
+      },
+      "gravity_offset": {
+        "Left_Knee_Pitch": -0.05802062036680733,
+        "Right_Knee_Pitch": -0.058114267401118316,
+        "Left_Hip_Yaw": 0.00459860698167148,
+        "Right_Hip_Yaw": -0.00609553869289701,
+        "Left_Ankle_Pitch": -0.0005316744525932351,
+        "Left_Ankle_Roll": 0.0005522326745499995,
+        "Right_Ankle_Pitch": -0.00044536730840960076,
+        "Right_Ankle_Roll": -0.00072885634190334,
+        "Left_Hip_Pitch": 0.08815447133726244,
+        "Right_Hip_Pitch": 0.08839435302012948,
+        "Left_Hip_Roll": -0.00033135379444180075,
+        "Right_Hip_Roll": 0.00042243199212856005,
+        "Left_Shoulder_Pitch": -0.06955962236854032,
+        "Left_Shoulder_Roll": -0.006291314949507343,
+        "Left_Elbow_Pitch": -0.002332611623998304,
+        "Left_Elbow_Yaw": -0.02130874741505252,
+        "Right_Shoulder_Pitch": -0.06958371434080642,
+        "Right_Shoulder_Roll": 0.00628334815892837,
+        "Right_Elbow_Pitch": -0.0023323700795394977,
+        "Right_Elbow_Yaw": 0.02130160089218752,
+        "Head_Yaw": -0.0011416779905326583,
+        "Head_Pitch": -0.09219313908807773
+      },
+      "root_x": -0.10985762946935526,
+      "root_z": 0.36898696261403724,
+      "root_pitch": 0.6499999999999999,
+      "knee_degrees": 92.54138304010226,
+      "lean_degrees": 37.242256683503506,
+      "requested_knee_degrees": null,
+      "requested_lean_degrees": null,
+      "hand_targets": [
+        [
+          0.2,
+          0.085,
+          0.21429369482
+        ],
+        [
+          0.2,
+          -0.085,
+          0.21429369482
+        ]
+      ],
+      "actual_hands": [
+        [
+          0.19999168945929416,
+          0.08500700655287746,
+          0.2143024247106729
+        ],
+        [
+          0.19999168938540657,
+          -0.08500700618968786,
+          0.21430242488189613
+        ]
+      ],
+      "hand_error_m": 1.3941587470914863e-05,
+      "foot_error_m": 5.235305710667049e-06,
+      "com_support_margin_m": 0.026564639147671848,
+      "motor_torque_utilization": 0.10399335649426998,
+      "static_wrench_error": 5.10904992498844e-15,
+      "self_penetrations": [
+        [
+          "robot/left_hip_yaw_collision",
+          "robot/trunk_collision",
+          -0.007593840119527292
+        ],
+        [
+          "robot/right_hip_yaw_collision",
+          "robot/trunk_collision",
+          -0.007929264028627475
+        ],
+        [
+          "robot/right_hip_yaw_collision",
+          "robot/trunk_collision",
+          -0.007929264028627475
+        ]
+      ],
+      "kinematically_feasible": false,
+      "screen": {
+        "tested": false,
+        "reason": "IK/reach/support/torque/collision constraint failed"
+      }
+    },
+    "knee60_lean50": {
+      "joint_pos": {
+        "Left_Knee_Pitch": 1.0646508437165407,
+        "Right_Knee_Pitch": 1.0646508437165407,
+        "Left_Hip_Yaw": -7.317304700031831e-06,
+        "Right_Hip_Yaw": -7.2925304867511724e-06,
+        "Left_Ankle_Pitch": -0.12757661273220622,
+        "Left_Ankle_Roll": -9.996733855449638e-06,
+        "Right_Ankle_Pitch": -0.12757661060234776,
+        "Right_Ankle_Roll": -9.968297354911332e-06,
+        "Left_Hip_Pitch": -1.8271922605049136,
+        "Right_Hip_Pitch": -1.8271922626346033,
+        "Left_Hip_Roll": 6.9951810797621425e-06,
+        "Right_Hip_Roll": 6.9808726394182275e-06,
+        "Left_Shoulder_Pitch": -1.113102390116889,
+        "Left_Shoulder_Roll": -1.5695,
+        "Left_Elbow_Pitch": 0.7884678820814286,
+        "Left_Elbow_Yaw": -0.4332441743980275,
+        "Right_Shoulder_Pitch": -1.1131110239643345,
+        "Right_Shoulder_Roll": 1.5695,
+        "Right_Elbow_Pitch": 0.7885026878261447,
+        "Right_Elbow_Yaw": 0.43323636081984346,
+        "Head_Yaw": 0.18161595504075054,
+        "Head_Pitch": 0.09827644626873551
+      },
+      "gravity_offset": {
+        "Left_Knee_Pitch": -0.009300449713797943,
+        "Right_Knee_Pitch": -0.009321564004424932,
+        "Left_Hip_Yaw": 0.0003604252881828876,
+        "Right_Hip_Yaw": -0.0003721323701580889,
+        "Left_Ankle_Pitch": 0.037673548097503305,
+        "Left_Ankle_Roll": 4.0910966982474765e-05,
+        "Right_Ankle_Pitch": 0.03780643746231856,
+        "Right_Ankle_Roll": -6.3873737063369075e-06,
+        "Left_Hip_Pitch": 0.10918227631518032,
+        "Right_Hip_Pitch": 0.10966679991307333,
+        "Left_Hip_Roll": -0.000264849563783158,
+        "Right_Hip_Roll": 0.00027345534981127877,
+        "Left_Shoulder_Pitch": -0.051944508463980556,
+        "Left_Shoulder_Roll": -0.007007549522440648,
+        "Left_Elbow_Pitch": -0.0016456513831546282,
+        "Left_Elbow_Yaw": -0.01560716514015772,
+        "Right_Shoulder_Pitch": -0.051973343864908775,
+        "Right_Shoulder_Roll": 0.007001434562391373,
+        "Right_Elbow_Pitch": -0.001646025004170193,
+        "Right_Elbow_Yaw": 0.015605386544291083,
+        "Head_Yaw": 0.003048929409253831,
+        "Head_Pitch": -0.12438757284168012
+      },
+      "root_x": -0.08485820534951541,
+      "root_z": 0.4391058991263303,
+      "root_pitch": 0.890117918517108,
+      "knee_degrees": 60.999999999999986,
+      "lean_degrees": 50.99999999999999,
+      "requested_knee_degrees": 60,
+      "requested_lean_degrees": 50,
+      "hand_targets": [
+        [
+          0.2,
+          0.085,
+          0.21429369482
+        ],
+        [
+          0.2,
+          -0.085,
+          0.21429369482
+        ]
+      ],
+      "actual_hands": [
+        [
+          0.1999926338443469,
+          0.08500756638608084,
+          0.21430894707620438
+        ],
+        [
+          0.19999268324885483,
+          -0.0850064973958014,
+          0.21430882803978654
+        ]
+      ],
+      "hand_error_m": 1.8551058372887398e-05,
+      "foot_error_m": 9.46533277922793e-06,
+      "com_support_margin_m": 0.04501485321469795,
+      "motor_torque_utilization": 0.1290197646036157,
+      "static_wrench_error": 1.425130522936907e-13,
+      "self_penetrations": [],
+      "kinematically_feasible": true,
+      "screen": {
+        "tested": true,
+        "trials": [
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.04065626869056119,
+            "max_foot_drift_m": 0.006655809359390056,
+            "final_root_height": 0.44358095729136754
+          },
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.04115813506918471,
+            "max_foot_drift_m": 0.004671236704162111,
+            "final_root_height": 0.4437415445894442
+          },
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.04215341015357197,
+            "max_foot_drift_m": 0.006722656093753376,
+            "final_root_height": 0.4437350572288855
+          }
+        ],
+        "stable_trials": 3
+      }
+    },
+    "knee45_lean65": {
+      "joint_pos": {
+        "Left_Knee_Pitch": 0.7679448708775051,
+        "Right_Knee_Pitch": 0.7679448708775051,
+        "Left_Hip_Yaw": -4.460061714593639e-06,
+        "Right_Hip_Yaw": -4.456957616235904e-06,
+        "Left_Ankle_Pitch": -0.017222034310567912,
+        "Left_Ankle_Roll": -7.251615852142387e-06,
+        "Right_Ankle_Pitch": -0.017222032747888045,
+        "Right_Ankle_Roll": -7.250096719596965e-06,
+        "Left_Hip_Pitch": -1.8677337176366482,
+        "Right_Hip_Pitch": -1.8677337191993153,
+        "Left_Hip_Roll": 5.798543359018478e-06,
+        "Right_Hip_Roll": 5.799361734404925e-06,
+        "Left_Shoulder_Pitch": -0.9968358987081825,
+        "Left_Shoulder_Roll": -1.5508992294546964,
+        "Left_Elbow_Pitch": 0.41898462659411356,
+        "Left_Elbow_Yaw": -0.920997372970164,
+        "Right_Shoulder_Pitch": -0.9894612306152366,
+        "Right_Shoulder_Roll": 1.5695,
+        "Right_Elbow_Pitch": 0.38292207812450385,
+        "Right_Elbow_Yaw": 0.920640550798731,
+        "Head_Yaw": 0.09969971520204322,
+        "Head_Pitch": 0.03985929193543155
+      },
+      "gravity_offset": {
+        "Left_Knee_Pitch": 0.01943025716228218,
+        "Right_Knee_Pitch": 0.019480334025253752,
+        "Left_Hip_Yaw": 0.0003064897903891098,
+        "Right_Hip_Yaw": -0.0003136483731018158,
+        "Left_Ankle_Pitch": 0.037685083766603414,
+        "Left_Ankle_Roll": 3.632429553898642e-05,
+        "Right_Ankle_Pitch": 0.03778265791222859,
+        "Right_Ankle_Roll": -1.0974041312876714e-05,
+        "Left_Hip_Pitch": 0.11929093773760732,
+        "Right_Hip_Pitch": 0.11965296903021194,
+        "Left_Hip_Roll": -0.0003285709500493755,
+        "Right_Hip_Roll": 0.00033613538588344314,
+        "Left_Shoulder_Pitch": -0.002947320621333005,
+        "Left_Shoulder_Roll": -0.005052746027370647,
+        "Left_Elbow_Pitch": 0.0005602253609793384,
+        "Left_Elbow_Yaw": -0.020515465933241793,
+        "Right_Shoulder_Pitch": -0.001958997188678069,
+        "Right_Shoulder_Roll": 0.007099739199018207,
+        "Right_Elbow_Pitch": 0.0009089005130168609,
+        "Right_Elbow_Yaw": 0.020469635676693167,
+        "Head_Yaw": 0.0004632423750248316,
+        "Head_Pitch": -0.1338484541755145
+      },
+      "root_x": -0.0785095645418119,
+      "root_z": 0.4527260022716049,
+      "root_pitch": 1.1170107212763711,
+      "knee_degrees": 44.00000000000001,
+      "lean_degrees": 64.00000000000001,
+      "requested_knee_degrees": 45,
+      "requested_lean_degrees": 65,
+      "hand_targets": [
+        [
+          0.2,
+          0.085,
+          0.21429369482
+        ],
+        [
+          0.2,
+          -0.085,
+          0.21429369482
+        ]
+      ],
+      "actual_hands": [
+        [
+          0.19999888887765732,
+          0.08500157331910178,
+          0.2142941985918306
+        ],
+        [
+          0.19999893646318095,
+          -0.0850007023803282,
+          0.21429408037317813
+        ]
+      ],
+      "hand_error_m": 1.9909073091835296e-06,
+      "foot_error_m": 2.9583789375026993e-06,
+      "com_support_margin_m": 0.04501168431944155,
+      "motor_torque_utilization": 0.14076819885907288,
+      "static_wrench_error": 2.5626925651496907e-13,
+      "self_penetrations": [],
+      "kinematically_feasible": true,
+      "screen": {
+        "tested": true,
+        "trials": [
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.043846846918287774,
+            "max_foot_drift_m": 0.00789624564153043,
+            "final_root_height": 0.45758848096576055
+          },
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.044216354895135694,
+            "max_foot_drift_m": 0.009038898568153564,
+            "final_root_height": 0.4574571380184159
+          },
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.04433016056540685,
+            "max_foot_drift_m": 0.008939399629326302,
+            "final_root_height": 0.4576725683849645
+          }
+        ],
+        "stable_trials": 3
+      }
+    },
+    "knee25_lean80": {
+      "joint_pos": {
+        "Left_Knee_Pitch": 0.4188790204786392,
+        "Right_Knee_Pitch": 0.4188790204786392,
+        "Left_Hip_Yaw": -1.846693904737672e-06,
+        "Right_Hip_Yaw": -1.84434802490018e-06,
+        "Left_Ankle_Pitch": 0.10942528461240045,
+        "Left_Ankle_Roll": -3.988226368346357e-06,
+        "Right_Ankle_Pitch": 0.10942528550035152,
+        "Right_Ankle_Roll": -3.9887624612738304e-06,
+        "Left_Hip_Pitch": -1.9071146276835218,
+        "Right_Hip_Pitch": -1.9071146285714786,
+        "Left_Hip_Roll": 3.559506181270008e-06,
+        "Right_Hip_Roll": 3.561496050971376e-06,
+        "Left_Shoulder_Pitch": -0.9743460756670226,
+        "Left_Shoulder_Roll": -1.5376601050039753,
+        "Left_Elbow_Pitch": 0.3424233217277781,
+        "Left_Elbow_Yaw": -1.3741163613686858,
+        "Right_Shoulder_Pitch": -0.9643950695630734,
+        "Right_Shoulder_Roll": 1.5695,
+        "Right_Elbow_Pitch": 0.30757900579174646,
+        "Right_Elbow_Yaw": 1.373503587935869,
+        "Head_Yaw": 0.04561812692091348,
+        "Head_Pitch": 0.011433127649900867
+      },
+      "gravity_offset": {
+        "Left_Knee_Pitch": 0.052480602477111095,
+        "Right_Knee_Pitch": 0.05254914377435005,
+        "Left_Hip_Yaw": 0.00022777630189346477,
+        "Right_Hip_Yaw": -0.00023045986961573033,
+        "Left_Ankle_Pitch": 0.037709085860500466,
+        "Left_Ankle_Roll": 3.059873841443128e-05,
+        "Right_Ankle_Pitch": 0.037762580846631255,
+        "Right_Ankle_Roll": -1.669959640176688e-05,
+        "Left_Hip_Pitch": 0.12562317154447886,
+        "Right_Hip_Pitch": 0.1258154487703728,
+        "Left_Hip_Roll": -0.0003902550409742384,
+        "Right_Hip_Roll": 0.0003948762219893487,
+        "Left_Shoulder_Pitch": 0.03657601017749392,
+        "Left_Shoulder_Roll": -0.0033585219780051913,
+        "Left_Elbow_Pitch": 0.0024645529194751046,
+        "Left_Elbow_Yaw": -0.02365317907730703,
+        "Right_Shoulder_Pitch": 0.03784754752652473,
+        "Right_Shoulder_Roll": 0.006589794126023651,
+        "Right_Elbow_Pitch": 0.0029420235793476855,
+        "Right_Elbow_Yaw": 0.023517195832319572,
+        "Head_Yaw": -0.0009448802343123921,
+        "Head_Pitch": -0.13954910152668487
+      },
+      "root_x": -0.06875883000145898,
+      "root_z": 0.45722070151977134,
+      "root_pitch": 1.3788101090755205,
+      "knee_degrees": 24.000000000000004,
+      "lean_degrees": 79.00000000000001,
+      "requested_knee_degrees": 25,
+      "requested_lean_degrees": 80,
+      "hand_targets": [
+        [
+          0.2,
+          0.085,
+          0.21429369482
+        ],
+        [
+          0.2,
+          -0.085,
+          0.21429369482
+        ]
+      ],
+      "actual_hands": [
+        [
+          0.1999992349925117,
+          0.08500080816338856,
+          0.21429279889716968
+        ],
+        [
+          0.1999992582796899,
+          -0.08500029035581505,
+          0.21429275482968424
+        ]
+      ],
+      "hand_error_m": 1.4286504952710102e-06,
+      "foot_error_m": 2.0613337233103246e-06,
+      "com_support_margin_m": 0.0450126809488339,
+      "motor_torque_utilization": 0.14801817502396797,
+      "static_wrench_error": 1.4290136605273026e-13,
+      "self_penetrations": [],
+      "kinematically_feasible": true,
+      "screen": {
+        "tested": true,
+        "trials": [
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.04398969694724789,
+            "max_foot_drift_m": 0.009525226527409746,
+            "final_root_height": 0.46192089117883417
+          },
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.044760934936367625,
+            "max_foot_drift_m": 0.010882633747325806,
+            "final_root_height": 0.46214536209510815
+          },
+          {
+            "failed": false,
+            "stable_fraction": 1.0,
+            "min_support_margin_m": 0.0449145537448516,
+            "max_foot_drift_m": 0.010064522857138032,
+            "final_root_height": 0.46215116687412244
+          }
+        ],
+        "stable_trials": 3
+      }
+    }
+  },
+  "training_candidates": [
+    "knee60_lean50",
+    "knee45_lean65",
+    "knee25_lean80"
+  ]
+}

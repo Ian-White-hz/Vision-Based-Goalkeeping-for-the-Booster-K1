@@ -1,0 +1,11 @@
+{
+  "ball_radius_m": 0.11,
+  "reference_width_target_m": 0.305,
+  "minimum_reference_width_m": 0.305,
+  "maximum_reference_width_m": 0.32,
+  "entry_clearance_min_m": 0.008,
+  "entry_plane_m": 0.2,
+  "rear_margin_target_m": -0.004,
+  "allowed_overclosure_m": 0.008,
+  "note": "22cm fixed task ball; choose the widest existing stance reference whose worst central route still blocks the ball while keeping >8mm front entry. Pixel diameter is not used as a metric ruler."
+}

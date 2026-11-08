@@ -1,0 +1,125 @@
+{
+  "kind": "kinematic_reference_only_not_dynamic_success",
+  "selected": "upper_sides",
+  "ball_center": [
+    0.2,
+    0,
+    0.112
+  ],
+  "poses": {
+    "upper_sides": {
+      "joint_pos": {
+        "Left_Knee_Pitch": 1.6151137718225044,
+        "Right_Knee_Pitch": 1.6151898849755435,
+        "Left_Hip_Yaw": -0.023938751556874308,
+        "Right_Hip_Yaw": 0.03252126475553412,
+        "Left_Ankle_Pitch": -0.22403904455596726,
+        "Left_Ankle_Roll": -0.016398177666328343,
+        "Right_Ankle_Pitch": -0.22437303484480137,
+        "Right_Ankle_Roll": 0.0222628336481317,
+        "Left_Hip_Pitch": -2.040955347905249,
+        "Right_Hip_Pitch": -2.0405948121084307,
+        "Left_Hip_Roll": -0.0400103926350449,
+        "Right_Hip_Roll": 0.054331728308417676,
+        "Left_Shoulder_Pitch": -0.9510246382811576,
+        "Left_Shoulder_Roll": -1.5644999999999998,
+        "Left_Elbow_Pitch": 0.5676715040852108,
+        "Left_Elbow_Yaw": -0.6051273627496656,
+        "Right_Shoulder_Pitch": -0.951024637648401,
+        "Right_Shoulder_Roll": 1.5644999999999998,
+        "Right_Elbow_Pitch": 0.5676715057960627,
+        "Right_Elbow_Yaw": 0.6051273649223814,
+        "Head_Yaw": -0.0009359837353839205,
+        "Head_Pitch": -0.06606320312484674
+      },
+      "root_x": -0.10985762946935526,
+      "root_z": 0.36898696261403724,
+      "root_pitch": 0.6499999999999999,
+      "hand_targets": [
+        [
+          0.2,
+          0.085,
+          0.21429369482035537
+        ],
+        [
+          0.2,
+          -0.085,
+          0.21429369482035537
+        ]
+      ],
+      "actual_hands": [
+        [
+          0.19999168945929416,
+          0.08500700655287746,
+          0.2143024247106729
+        ],
+        [
+          0.19999168938540657,
+          -0.08500700618968786,
+          0.21430242488189613
+        ]
+      ],
+      "hand_error_m": 1.394158724838286e-05,
+      "foot_error_m": 5.235305710667049e-06,
+      "com_midpoint_error_m": 0.00031241500197007473,
+      "kinematically_feasible": true
+    },
+    "near_top": {
+      "joint_pos": {
+        "Left_Knee_Pitch": 1.6033934800213263,
+        "Right_Knee_Pitch": 1.6035093465503916,
+        "Left_Hip_Yaw": -0.0386069277166798,
+        "Right_Hip_Yaw": 0.04739769134703997,
+        "Left_Ankle_Pitch": -0.2229864431908467,
+        "Left_Ankle_Roll": -0.02591526226118737,
+        "Right_Ankle_Pitch": -0.22348430036925765,
+        "Right_Ankle_Roll": 0.031785505978194205,
+        "Left_Hip_Pitch": -2.030086617604261,
+        "Right_Hip_Pitch": -2.029540385770412,
+        "Left_Hip_Roll": -0.06331593172951581,
+        "Right_Hip_Roll": 0.07768328820911526,
+        "Left_Shoulder_Pitch": -0.9638037117439827,
+        "Left_Shoulder_Roll": -1.5644999999999998,
+        "Left_Elbow_Pitch": 0.75314922324951,
+        "Left_Elbow_Yaw": -0.724271009020924,
+        "Right_Shoulder_Pitch": -0.963803711549233,
+        "Right_Shoulder_Roll": 1.5644999999999998,
+        "Right_Elbow_Pitch": 0.753149224094374,
+        "Right_Elbow_Yaw": 0.7242710102271265,
+        "Head_Yaw": -0.0010004347356835426,
+        "Head_Pitch": -0.07063885757137661
+      },
+      "root_x": -0.10987391956645162,
+      "root_z": 0.37099425290825744,
+      "root_pitch": 0.6499999999999999,
+      "hand_targets": [
+        [
+          0.2,
+          0.055,
+          0.23309500402576483
+        ],
+        [
+          0.2,
+          -0.055,
+          0.23309500402576483
+        ]
+      ],
+      "actual_hands": [
+        [
+          0.19999115013716404,
+          0.05501008947442823,
+          0.23310372143790656
+        ],
+        [
+          0.19999115008536467,
+          -0.05501008926507553,
+          0.2331037215696812
+        ]
+      ],
+      "hand_error_m": 1.6003463403346328e-05,
+      "foot_error_m": 5.238994004792902e-06,
+      "com_midpoint_error_m": 0.00033272187006230325,
+      "kinematically_feasible": true
+    }
+  }
+}
