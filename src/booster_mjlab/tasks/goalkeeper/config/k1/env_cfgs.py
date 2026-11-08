@@ -111,6 +111,8 @@ def booster_k1_goalkeeper_env_cfg(
         params={
             "ball_name": "ball",
             "velocity_change_threshold": 2.0,
+            "rolling_velocity_change_fraction": 0.8,
+            "contact_sensor_name": "robot_ball_contact",
         },
     )
     cfg.events["reset_goalkeeper_outcome"] = EventTermCfg(
@@ -156,9 +158,21 @@ def booster_k1_goalkeeper_env_cfg(
         track_air_time=True,
     )
 
+    robot_ball_contact = ContactSensorCfg(
+        name="robot_ball_contact",
+        primary=ContactMatch(mode="body", entity="ball", pattern="football"),
+        secondary=ContactMatch(mode="subtree", entity="robot", pattern="Trunk"),
+        secondary_policy="error",
+        fields=("found", "force"),
+        reduce="maxforce",
+        num_slots=1,
+        history_length=cfg.decimation,
+    )
+
     cfg.scene.sensors = (
         *cfg.scene.sensors,
         feet_ground_contact,
+        robot_ball_contact,
     )
 
     cfg.rewards["feet_slippage"] = RewardTermCfg(

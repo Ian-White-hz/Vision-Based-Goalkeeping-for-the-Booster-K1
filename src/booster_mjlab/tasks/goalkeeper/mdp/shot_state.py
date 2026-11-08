@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -16,9 +17,18 @@ class GoalKeeperShotState:
         device: torch.device | str | None = None,
         ball_name: str = "ball",
         velocity_change_threshold: float = 2.0,
+        rolling_velocity_change_fraction: float = 0.8,
+        contact_sensor_name: str = "robot_ball_contact",
     ):
+        if (
+            not math.isfinite(rolling_velocity_change_fraction)
+            or not 0.0 < rolling_velocity_change_fraction <= 1.0
+        ):
+            raise ValueError("rolling_velocity_change_fraction must be in (0, 1]")
         self.ball_name = ball_name
         self.velocity_change_threshold = velocity_change_threshold
+        self.rolling_velocity_change_fraction = rolling_velocity_change_fraction
+        self.contact_sensor_name = contact_sensor_name
 
         self.stop_flag = torch.zeros(
             num_envs, dtype=torch.bool, device=device
@@ -53,6 +63,27 @@ class GoalKeeperShotState:
 
         fresh = self.last_update_step != env.common_step_counter
 
+        is_rolling = shots.get("is_rolling", torch.zeros_like(self.stop_flag))
+        robot_ball_contact = torch.zeros_like(self.stop_flag)
+        if is_rolling.any():
+            try:
+                contact = env.scene[self.contact_sensor_name].data
+            except KeyError as error:
+                raise RuntimeError(
+                    "Rolling shot success requires the robot-ball contact sensor "
+                    f"{self.contact_sensor_name!r}"
+                ) from error
+            if contact.found is None or contact.force_history is None:
+                raise RuntimeError(
+                    "Robot-ball contact sensor requires found and force history"
+                )
+            # A collision may end before the final physics substep. Only keep
+            # contact evidence from this control step, not the whole episode:
+            # a light touch followed much later by friction is not a save.
+            robot_ball_contact = (contact.found > 0).any(dim=1) | (
+                contact.force_history.square().sum(dim=-1) > 1.0e-12
+            ).any(dim=(1, 2))
+
         reward, next_stop, next_success = stopball_transition(
             ball_position_x_e=(
                 ball.data.root_link_pos_w[:, 0]
@@ -63,6 +94,9 @@ class GoalKeeperShotState:
             stop_flag=self.stop_flag,
             success_flag=self.success_flag,
             velocity_change_threshold=self.velocity_change_threshold,
+            is_rolling=is_rolling,
+            robot_ball_contact=robot_ball_contact,
+            rolling_velocity_change_fraction=self.rolling_velocity_change_fraction,
         )
 
         self.success_before_step.copy_(
@@ -111,12 +145,22 @@ def get_recovery_mask(
         current_velocity_x - launch_velocity_x
         > velocity_change_threshold
     )
+    # Rolling shots use the contact-gated relative criterion in the shared
+    # shot state, never a second, contact-free velocity threshold here.
+    is_rolling = shots.get("is_rolling", torch.zeros_like(behind_reference))
+    velocity_changed &= ~is_rolling
+    saved = torch.zeros_like(behind_reference)
+    shot_state = getattr(env, "_goalkeeper_shot_state", None)
+    if shot_state is not None:
+        shot_state.update(env)
+        saved = shot_state.success_flag
 
     outcome = env._goalkeeper_outcome_state
 
     return (
         behind_reference
         | velocity_changed
+        | saved
         | outcome.shot_resolved
     )
 
@@ -195,21 +239,54 @@ def stopball_transition(
     stop_flag: torch.Tensor,
     success_flag: torch.Tensor,
     velocity_change_threshold: float = 2.0,
+    *,
+    is_rolling: torch.Tensor | None = None,
+    robot_ball_contact: torch.Tensor | None = None,
+    rolling_velocity_change_fraction: float = 0.8,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    '''检测球是否停止或成功接触, shape (B,)'''
+    """One-shot save proxy; rolling saves require contact in this control step.
+
+    Ballistic shots retain the absolute delta-v criterion. Rolling shots use
+    a fraction of the incoming x speed, so both stopping and reflecting a slow
+    ball can count. This is not a final no-goal outcome classification.
+    """
     for flag in (stop_flag, success_flag):
         if (
             flag.dtype != torch.bool
             or flag.shape != ball_position_x_e.shape
         ):
             raise ValueError("Flags must be boolean with shape (B,)")
-        
-    changed_velocity = (
-        (
-            ball_velocity_x_w - launch_velocity_x_w
-            > velocity_change_threshold
-        )
-        & (ball_position_x_e > 0.0)
+    if (
+        not math.isfinite(rolling_velocity_change_fraction)
+        or not 0.0 < rolling_velocity_change_fraction <= 1.0
+    ):
+        raise ValueError("rolling_velocity_change_fraction must be in (0, 1]")
+    if is_rolling is None:
+        is_rolling = torch.zeros_like(stop_flag)
+    if robot_ball_contact is None:
+        if is_rolling.any():
+            raise ValueError("Rolling shots require robot_ball_contact")
+        robot_ball_contact = torch.zeros_like(stop_flag)
+    for flag in (is_rolling, robot_ball_contact):
+        if flag.dtype != torch.bool or flag.shape != ball_position_x_e.shape:
+            raise ValueError("Shot masks must be boolean with shape (B,)")
+
+    delta_vx = ball_velocity_x_w - launch_velocity_x_w
+    rolling_changed = (
+        (delta_vx >= rolling_velocity_change_fraction * (-launch_velocity_x_w))
+        & robot_ball_contact
+    )
+    changed_velocity = torch.where(
+        is_rolling,
+        rolling_changed,
+        delta_vx > velocity_change_threshold,
+    )
+    changed_velocity &= (
+        (ball_position_x_e > 0.0)
+        & (launch_velocity_x_w < -1.0e-6)
+        & torch.isfinite(ball_position_x_e)
+        & torch.isfinite(ball_velocity_x_w)
+        & torch.isfinite(launch_velocity_x_w)
     )
 
     first_event = (~stop_flag) & changed_velocity
@@ -229,6 +306,8 @@ def reset_shot_outcome_state(
     env_ids: torch.Tensor | None = None,
     ball_name: str = "ball",
     velocity_change_threshold: float = 2.0,
+    rolling_velocity_change_fraction: float = 0.8,
+    contact_sensor_name: str = "robot_ball_contact",
 ):
     if not hasattr(env, "_goalkeeper_shot_state"):
         env._goalkeeper_shot_state = GoalKeeperShotState(
@@ -236,6 +315,8 @@ def reset_shot_outcome_state(
             device=env.device,
             ball_name=ball_name,
             velocity_change_threshold=velocity_change_threshold,
+            rolling_velocity_change_fraction=rolling_velocity_change_fraction,
+            contact_sensor_name=contact_sensor_name,
         )
 
     env._goalkeeper_shot_state.reset(env_ids=env_ids)

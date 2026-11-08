@@ -32,6 +32,11 @@ class FullGoalSettings:
     ball_y_limit: float = 3.0
     recovery_duration_s: float = 2.0
     fixed_motion_id: int | None = None
+    # Baseline A: step categories remain rolling-only. Low ballistic shots need
+    # their own feasible launch-height/time ranges before enabling a mixture.
+    rolling_probability_by_region: tuple[float, ...] = (
+        0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+    )
 
     intercept_region_bounds: tuple[tuple[float, float, float, float], ...] = (
         (0.15, 0.65, 0.35, 0.60),

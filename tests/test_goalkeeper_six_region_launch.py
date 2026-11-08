@@ -18,6 +18,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
 
 
 settings = FullGoalSettings()
+assert settings.rolling_probability_by_region == (0., 0., 0., 0., 1., 1.)
 
 try:
     sample_six_region_shots(1, settings, regions=torch.tensor([0.0]))
@@ -102,8 +103,12 @@ assert (
     & (many_target[:, 2] >= many_bounds[:, 2])
     & (many_target[:, 2] <= many_bounds[:, 3])
 ).all()
-assert (~many["is_rolling"][:4]).any()
-assert many["is_rolling"][many_regions >= 4].all()
+assert torch.equal(many["is_rolling"], many_regions >= 4)
+rolling_speed = torch.linalg.vector_norm(
+    many["velocity"][many["is_rolling"], :2], dim=-1
+)
+assert (rolling_speed >= settings.speed_range[0] - 1.0e-6).all()
+assert (rolling_speed <= settings.speed_range[1] + 1.0e-6).all()
 
 cfg = booster_k1_goalkeeper_env_cfg(
     num_envs=2,

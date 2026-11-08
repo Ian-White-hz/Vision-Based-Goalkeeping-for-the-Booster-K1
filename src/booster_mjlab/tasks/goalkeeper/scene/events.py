@@ -59,9 +59,11 @@ def sample_six_region_shots(
 ):
     """Sample six motion-aligned shots defined at the robot intercept plane.
 
-    Hand and jump categories (0--3) are ballistic. Step categories (4--5)
-    are rolling shots. Every accepted shot also places the whole ball inside
-    the goal aperture at ``goal_x``.
+    By default, hand and jump categories (0--3) are ballistic and step
+    categories (4--5) are rolling. ``rolling_probability_by_region`` selects
+    the mode per shot; overrides still need feasible trajectory parameters.
+    Every accepted shot also places the whole ball inside the goal aperture
+    at ``goal_x`` in the sampling model.
     """
     if count < 0:
         raise ValueError("count must be nonnegative")
@@ -104,7 +106,15 @@ def sample_six_region_shots(
     velocity = torch.empty_like(start_position_e)
     flight_time = torch.empty(count, dtype=torch.float32, device=device)
     intercept_time = torch.empty_like(flight_time)
-    is_rolling = region >= 4
+    probability = torch.tensor(
+        settings.rolling_probability_by_region,
+        device=device,
+    )[region]
+
+    is_rolling = (
+        torch.rand(count, device=device, generator=generator)
+        < probability
+    )
 
     pending = torch.arange(count, device=device)
     for _ in range(max_resample_rounds):
@@ -112,7 +122,7 @@ def sample_six_region_shots(
             break
         size = pending.numel()
         pending_regions = region[pending]
-        rolling = pending_regions >= 4
+        rolling = is_rolling[pending]
 
         start = torch.stack(
             (
@@ -306,6 +316,11 @@ def sample_shots(count, settings: FullGoalSettings, device="cpu", generator=None
 def launch_shots(env, env_ids, settings: FullGoalSettings):
     ids = torch.arange(env.num_envs, device=env.device) if env_ids is None else env_ids
     sample = sample_shots(len(ids), settings, device=env.device)
+    sample["is_rolling"] = torch.ones(
+        len(ids),
+        dtype=torch.bool,
+        device=env.device
+    )
     target_position_e, region = compute_rolling_shot_target(
         start_x=sample["start_x"],
         start_y=sample["start_y"],
@@ -317,6 +332,7 @@ def launch_shots(env, env_ids, settings: FullGoalSettings):
 
     sample["target_position_e"] = target_position_e
     sample["region"] = region
+    
     # Diagnostics only: never automatically inserted into observations.
     if not hasattr(env, "_full_goal_shots"):
         env._full_goal_shots = {
