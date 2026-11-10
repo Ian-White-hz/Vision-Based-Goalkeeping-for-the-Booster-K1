@@ -197,8 +197,7 @@ try:
 
         assert raw_reach.shape == (env.num_envs,)
         assert torch.isfinite(raw_reach).all()
-        # Signed progress can penalize motion away from the intercept target.
-        assert (raw_reach >= -3.0).all() and (raw_reach <= 3.731059).all()
+        assert (raw_reach >= 0.).all() and (raw_reach <= .731059).all()
         assert torch.isfinite(total_reward).all()
 
         if terminated.any().item() or truncated.any().item():
@@ -208,9 +207,7 @@ try:
 
         assert raw_success.shape == (env.num_envs,)
         assert torch.isfinite(raw_success).all()
-        assert (
-            (raw_success == 0.0) | (raw_success == 1.0) | (raw_success == 2.0)
-        ).all()
+        assert ((raw_success >= 0.) & (raw_success <= 1.)).all()
 
     print("ee_reach 原始奖励:", raw_reach)
     print("ee_reach 环境接入检查通过")

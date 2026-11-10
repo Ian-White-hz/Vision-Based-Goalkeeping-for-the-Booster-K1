@@ -33,11 +33,27 @@ class CategoricalAmpPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
 
 
 @dataclass
+class PeriodicEvaluationCfg:
+    interval: int = 0
+    """Completed PPO updates between evaluations; zero disables evaluation."""
+    evaluator_factory: str | None = None
+    validation_seeds: tuple[int, ...] = tuple(range(100, 120))
+    holdout_seeds: tuple[int, ...] = tuple(range(10000, 10020))
+    num_envs: int = 60
+    max_seconds: float = 6.0
+    evaluate_at_start: bool = True
+    evaluate_at_end: bool = True
+
+
+@dataclass
 class CategoricalAmpRunnerCfg(RslRlOnPolicyRunnerCfg):
     class_name: str = "CategoricalAmpOnPolicyRunner"
+    load_checkpoint: str = r"model_[0-9]+\.pt$"
+    """Automatic resume selects the latest numbered file, excluding model_best.pt."""
     algorithm: CategoricalAmpPpoAlgorithmCfg = field(
         default_factory=CategoricalAmpPpoAlgorithmCfg
     )
     amp: CategoricalAmpCfg = field(default_factory=CategoricalAmpCfg)
+    evaluation: PeriodicEvaluationCfg = field(default_factory=PeriodicEvaluationCfg)
     warm_start: bool = False
     """Load Actor/Critic only into a fresh runner; keep a fresh AMP and Adam."""

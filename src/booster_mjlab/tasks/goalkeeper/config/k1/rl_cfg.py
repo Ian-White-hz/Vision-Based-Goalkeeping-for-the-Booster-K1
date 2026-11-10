@@ -9,6 +9,7 @@ from booster_mjlab.amp.runners.categorical_runner_cfg import (
     CategoricalAmpCfg,
     CategoricalAmpPpoAlgorithmCfg,
     CategoricalAmpRunnerCfg,
+    PeriodicEvaluationCfg,
 )
 
 
@@ -84,6 +85,12 @@ def booster_k1_goalkeeper_amp_runner_cfg() -> CategoricalAmpRunnerCfg:
             ),
         ),
         experiment_name="k1_goalkeeper_amp",
+        evaluation=PeriodicEvaluationCfg(
+            interval=500,
+            evaluator_factory=(
+                "booster_mjlab.tasks.goalkeeper.evaluation:GoalkeeperEvaluator"
+            ),
+        ),
         num_steps_per_env=base.num_steps_per_env,
         max_iterations=base.max_iterations,
         save_interval=base.save_interval,

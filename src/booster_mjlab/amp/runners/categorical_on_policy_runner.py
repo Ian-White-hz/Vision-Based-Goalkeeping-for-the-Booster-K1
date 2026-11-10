@@ -17,6 +17,7 @@ from booster_mjlab.amp.modules.categorical_discriminator import (
 from booster_mjlab.amp.runners.categorical_iteration import (
     run_categorical_amp_iteration,
 )
+from booster_mjlab.amp.runners.periodic_evaluation import PeriodicEvaluation
 from booster_mjlab.rl.runner import BoosterOnPolicyRunner
 from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
 
@@ -60,6 +61,7 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
         # Completed updates, cumulative transitions and time, independent of logging.
         self.total_timesteps = 0
         self.total_time = 0.0
+        self.periodic_evaluation = PeriodicEvaluation(self.cfg.get("evaluation", {}))
         self.add_git_repo_to_log(__file__)
 
     def bind_amp_interfaces(self, expert_sampler, read_motion_ids) -> None:
@@ -101,6 +103,8 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
         last_saved_iteration = None
         try:
             self.logger.init_logging_writer()
+            if self.periodic_evaluation.cfg.get("evaluate_at_start", True):
+                self._evaluate_policy(force=True)
             for _ in range(num_learning_iterations):
                 # Run one iteration of collection and learning, updating the AMP model and PPO policy.
                 obs, summary = run_categorical_amp_iteration(
@@ -120,6 +124,10 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
                 )
                 self.total_time += sum(summary["timing"].values())
                 self._log_iteration(summary, target_iteration)
+                final = self.current_learning_iteration == target_iteration
+                self._evaluate_policy(force=(
+                    final and self.periodic_evaluation.cfg.get("evaluate_at_end", True)
+                ))
                 if (
                     self.logger.log_dir is not None
                     and not self.logger.disable_logs
@@ -136,6 +144,16 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
                 self._save_iteration_checkpoint()
         finally:
             self._close_logging_writer()
+
+    def _evaluate_policy(self, *, force=False) -> None:
+        try:
+            self.periodic_evaluation.run(self, force=force)
+        except Exception:
+            # Preserve completed work if evaluation/configuration fails. The
+            # original error is propagated and the previous best stays atomic.
+            if self.logger.log_dir is not None and not self.logger.disable_logs:
+                self._save_iteration_checkpoint()
+            raise
 
     def _log_iteration(self, summary: dict, target_iteration: int) -> None:
         # Logger expects zero-based indices; our counter counts COMPLETED updates.
@@ -232,6 +250,7 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
                 "common_step_counter": int(self.env.unwrapped.common_step_counter)
             },
             "categorical_amp_runner": runner_state,
+            "periodic_evaluation": self.periodic_evaluation.state,
         }
         payload = self.alg.save()
         payload.update(iter=self.current_learning_iteration, infos=saved_infos)
@@ -296,6 +315,9 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
             self.total_timesteps = state["total_timesteps"]
             self.total_time = state["total_time"]
             self.env.unwrapped.common_step_counter = counter
+            self.periodic_evaluation.restore(infos.get("periodic_evaluation"), path, self)
+        else:
+            self.periodic_evaluation.state = {}
         self.logger.tot_timesteps = self.total_timesteps
         self.logger.tot_time = self.total_time
         # New physical episodes must not inherit old partial episode returns.

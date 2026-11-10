@@ -9,10 +9,9 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_apply_inverse
 
 from .outcomes import update_goalkeeper_outcome_state
+from .interception import body_lateral_progress, interception_features
 from .shot_state import (
     get_recovery_mask,
-    get_blocker_target_distance,
-    get_blocker_target_kinematics,
     stopball_transition as stopball_transition,  # Public compatibility export.
     get_shot_outcome_state,
 )
@@ -779,7 +778,7 @@ def intercept_movement_reward(
     movement_fade_distance: float = 0.3,
     movement_speed_limit: float = 1.0,
 ) -> torch.Tensor:
-    """Bounded signed approach reward, fading to zero at blocker attainment.
+    """Legacy blocker-speed reward for retrospective comparisons, not live shaping.
 
     Closing speed is -d(distance)/dt for the current nearest blocker, not a
     region-selected torso velocity. No history or episode state is needed.
@@ -812,7 +811,7 @@ def movement_guided_intercept_reward(
     movement_fade_distance: float = 0.3,
     movement_speed_limit: float = 1.0,
 ) -> torch.Tensor:
-    """Nearest-blocker proximity plus signed progress, for the whole approach."""
+    """Legacy combined formula; live adapters use timed coverage and root progress."""
     proximity = intercept_proximity_reward(
         distance, active_mask,
         distance_sigma=distance_sigma, reach_threshold=reach_threshold,
@@ -833,54 +832,35 @@ def ee_reach_from_env(
     ball_name: str = "ball",
     distance_sigma: float = 5.0,
     reach_threshold: float = 0.2,
-    movement_weight: float = 3.0,
-    movement_fade_distance: float = 0.3,
-    movement_speed_limit: float = 1.0,
+    guidance: dict | None = None,
 ) -> torch.Tensor:
+    """Time-weighted blocker coverage; no positive hand-speed bonus."""
+    f = interception_features(env, blocker_cfg, ball_name=ball_name, guidance=guidance,
+                              reach_threshold=reach_threshold)
+    proximity = intercept_proximity_reward(
+        f["distance"], f["active"], distance_sigma=distance_sigma, reach_threshold=reach_threshold,
+    )
+    reward = proximity * f["time_weight"] * f["settling"] * f["upright"]
+    return torch.where(f["active"], reward, 0.)
+
+
+def body_intercept_from_env(
+    env: ManagerBasedRlEnv, blocker_cfg: SceneEntityCfg, ball_name: str = "ball",
+    guidance: dict | None = None, lateral_reach: float = .3,
+    movement_weight: float = .5, fade_distance: float = .3,
+    speed_limit: float = 1., reach_threshold: float = .2,
+) -> torch.Tensor:
+    """Independent, bounded root lateral progress, never a hand-speed reward."""
+    f = interception_features(env, blocker_cfg, ball_name=ball_name, guidance=guidance,
+                              reach_threshold=reach_threshold)
     robot = env.scene[blocker_cfg.name]
-    ball = env.scene[ball_name]
-    shots = env._full_goal_shots
-    origins = env.scene.env_origins
-
-    target_position_e = shots["target_position_e"]
-    distance, closing_speed = get_blocker_target_kinematics(env, blocker_cfg)
-
-    ball_position_x_e = (
-        ball.data.root_link_pos_w[:, 0] - origins[:, 0]
+    reward = body_lateral_progress(
+        f["target"][:, 1], robot.data.root_link_pos_w[:, 1] - env.scene.env_origins[:, 1],
+        robot.data.root_link_lin_vel_w[:, 1], f["distance"], lateral_reach=lateral_reach,
+        movement_weight=movement_weight, fade_distance=fade_distance,
+        speed_limit=speed_limit, reach_threshold=reach_threshold,
     )
-    velocity_x = ball.data.root_link_lin_vel_w[:, 0]
-
-    shot_state = get_shot_outcome_state(env)
-    outcome = env._goalkeeper_outcome_state
-
-    valid = (
-        torch.isfinite(target_position_e).all(dim=1)
-        & torch.isfinite(distance)
-        & torch.isfinite(closing_speed)
-        & torch.isfinite(ball_position_x_e)
-        & torch.isfinite(velocity_x)
-    )
-
-    active_mask = (
-        valid
-        & (velocity_x < -1.0e-6)
-        & (ball_position_x_e > target_position_e[:, 0])
-        & ~shot_state.stop_flag
-        & ~shot_state.success_flag
-        & ~outcome.shot_resolved
-    )
-
-    return movement_guided_intercept_reward(
-        distance,
-        active_mask,
-        closing_speed,
-        robot.data.projected_gravity_b,
-        distance_sigma=distance_sigma,
-        reach_threshold=reach_threshold,
-        movement_weight=movement_weight,
-        movement_fade_distance=movement_fade_distance,
-        movement_speed_limit=movement_speed_limit,
-    )
+    return torch.where(f["active"], reward * f["upright"], 0.)
 
 def stopball_from_env(
     env: ManagerBasedRlEnv,
@@ -912,18 +892,12 @@ def target_success_from_env(
     env: ManagerBasedRlEnv,
     blocker_cfg: SceneEntityCfg,
     strict_threshold: float = 0.15,
+    guidance: dict | None = None,
 ) -> torch.Tensor:
-    """Target attainment with the same allowed blockers as reach shaping."""
-    distance = get_blocker_target_distance(env, blocker_cfg)
-    state = get_shot_outcome_state(env)
-
-    reward = target_success_reward(
-        distance=distance,
-        success_flag=state.success_before_step,
-        strict_threshold=strict_threshold,
-    )
-
-    return _active_shot_reward(env, reward)
+    """Time-aligned attainment of the same corrected target as reach shaping."""
+    f = interception_features(env, blocker_cfg, guidance=guidance)
+    reward = (f["distance"] < strict_threshold).float() * f["time_weight"] * f["settling"]
+    return torch.where(f["active"], reward, 0.)
 
 def _actuated_joint_ids(robot) -> torch.Tensor:
     groups = []

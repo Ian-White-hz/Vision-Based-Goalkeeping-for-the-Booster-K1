@@ -9,6 +9,7 @@ from booster_mjlab.tasks.goalkeeper.config.k1.env_cfgs import (
     booster_k1_goalkeeper_amp_env_cfg,
 )
 from booster_mjlab.tasks.goalkeeper.mdp.rewards import target_success_reward
+from booster_mjlab.tasks.goalkeeper.mdp.interception import interception_features
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     get_blocker_target_distance,
     get_hand_target_distance,
@@ -16,7 +17,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
 )
 
 
-def legacy_success(env, blocker_cfg, strict_threshold):
+def legacy_success(env, blocker_cfg, strict_threshold, guidance):
     """Previous region-selected-hand criterion, used only for comparison."""
     state = get_shot_outcome_state(env)
     reward = target_success_reward(
@@ -24,9 +25,8 @@ def legacy_success(env, blocker_cfg, strict_threshold):
         state.success_before_step,
         strict_threshold,
     )
-    return torch.where(
-        env._goalkeeper_outcome_state.shot_resolved, 0.0, reward
-    )
+    f = interception_features(env, blocker_cfg, guidance=guidance)
+    return torch.where(f["active"], reward * f["time_weight"] * f["settling"], 0.)
 
 
 torch.set_num_threads(1)
@@ -84,7 +84,7 @@ try:
         new_total = env.reward_manager.compute(dt=env.step_dt).clone()
         new_terms = env.reward_manager._step_reward.clone()
         torch.testing.assert_close(new_terms[:, other_indices], old_terms[:, other_indices])
-        torch.testing.assert_close(new_terms[:, index], torch.full((2,), 5.0))
+        torch.testing.assert_close(new_terms[:, index], torch.full((2,), 1.0))
         torch.testing.assert_close(
             new_total - old_total,
             (new_terms[:, index] - old_terms[:, index]) * env.step_dt,
@@ -101,14 +101,14 @@ try:
         torch.testing.assert_close(new_mixed - old_mixed, 0.6 * (new_total - old_total), atol=1e-6, rtol=1e-5)
         if point_index >= 2:
             torch.testing.assert_close(old_terms[:, index], torch.zeros(2))
-            torch.testing.assert_close(new_mixed - old_mixed, torch.full((2,), 0.06), atol=1e-6, rtol=1e-5)
+            torch.testing.assert_close(new_mixed - old_mixed, torch.full((2,), 0.012), atol=1e-6, rtol=1e-5)
         assert not env._goalkeeper_shot_state.success_flag.any()
         assert not env._goalkeeper_outcome_state.saved.any()
         print(label, "old/new raw success:", (old_terms[:, index] / 5).tolist(),
               (new_terms[:, index] / 5).tolist(), "mixed delta:", (new_mixed - old_mixed).tolist())
 
     env._goalkeeper_outcome_state.shot_resolved[0] = True
-    torch.testing.assert_close(success.func(env, **success.params), torch.tensor([0.0, 1.0]))
+    torch.testing.assert_close(success.func(env, **success.params), torch.tensor([0.0, .2]))
     assert reach.func(env, **reach.params)[0] == 0
     _, _ = env.reset(env_ids=torch.tensor([0]))
     assert not env._goalkeeper_outcome_state.shot_resolved[0]

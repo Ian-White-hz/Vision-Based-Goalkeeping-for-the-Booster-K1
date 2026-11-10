@@ -11,6 +11,7 @@ from booster_mjlab.tasks.goalkeeper.scene.settings import (
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     get_shot_outcome_state,
 )
+from booster_mjlab.tasks.goalkeeper.mdp.interception import interception_features
 
 
 cfg = booster_k1_goalkeeper_env_cfg(
@@ -66,7 +67,7 @@ try:
         * (term.params["reach_threshold"] - distance_w)
     )
 
-    near_expected = expected.clone()
+    expected *= .2  # far-ball preparation weight, zero initial blocker velocity
     torch.testing.assert_close(initial, expected)
 
     print("多环境坐标转换检查通过")
@@ -114,11 +115,10 @@ try:
         set_ball_state(modified)
         reward = term.func(env, **term.params)
 
-        expected_first = (
-            near_expected[0]
-            if should_be_active
-            else torch.zeros_like(initial[0])
-        )
+        f = interception_features(env, blocker_cfg, guidance=term.params["guidance"])
+        expected_first = torch.sigmoid(5 * (.2 - f["distance"][0])) * f["time_weight"][0] * f["settling"][0]
+        if not should_be_active:
+            expected_first *= 0
 
         torch.testing.assert_close(reward[0], expected_first)
 

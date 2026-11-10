@@ -10,8 +10,6 @@ from mjlab.rl import RslRlVecEnvWrapper
 from booster_mjlab.amp.runners.categorical_on_policy_runner import CategoricalAmpOnPolicyRunner
 from booster_mjlab.tasks.goalkeeper.config.k1.env_cfgs import booster_k1_goalkeeper_amp_env_cfg
 from booster_mjlab.tasks.goalkeeper.config.k1.rl_cfg import booster_k1_goalkeeper_amp_runner_cfg
-from booster_mjlab.tasks.goalkeeper.mdp.rewards import intercept_movement_reward
-from booster_mjlab.tasks.goalkeeper.mdp.shot_state import get_blocker_target_kinematics
 from booster_mjlab.tasks.goalkeeper.scene.settings import FullGoalSettings
 
 
@@ -47,12 +45,12 @@ try:
     env.sim.forward()
     env.scene.update(dt=0.)
     reach = env.reward_manager.get_term_cfg("eereach")
+    body_term = env.reward_manager.get_term_cfg("body_intercept")
     original = reach.func
     observed = []
 
     def capture(current_env, **params):
-        distance, closing = get_blocker_target_kinematics(current_env, params["blocker_cfg"])
-        movement = intercept_movement_reward(distance, closing)
+        movement = body_term.func(current_env, **body_term.params)
         raw = original(current_env, **params)
         observed.append((movement.clone(), raw.clone()))
         return raw
@@ -64,13 +62,13 @@ try:
     assert runner.current_learning_iteration == 1 and runner.total_timesteps == 8
     assert len(observed) == 4
     assert observed[0][0][0] > 0 and observed[0][0][1] < 0, observed[0]
-    assert observed[0][1][0] > 0 and observed[0][1][1] < 0, observed[0]
+    assert (observed[0][1] >= 0).all(), observed[0]  # hand coverage has no signed speed bonus
     assert runner.amp_updater.expert_sampler is not None
     assert all(torch.isfinite(t).all() for row in observed for t in row)
     assert all(torch.isfinite(torch.tensor(v)) for v in runner._last_iteration_summary["ppo"].values())
     for module, state in zip((runner.alg.actor, runner.alg.critic, runner.amp_model), before):
         assert all(torch.isfinite(p).all() for p in module.parameters())
         assert any(not torch.equal(value, state[key]) for key, value in module.state_dict().items())
-    print("8 real transitions: positive/negative reach, real experts, Actor/Critic/AMP updates finite and changed")
+    print("8 real transitions: signed root progress, timed hand coverage, real experts, finite Actor/Critic/AMP updates")
 finally:
     env.close()

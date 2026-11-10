@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import asdict
 from typing import Literal
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -38,6 +39,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.rewards import (
     post_recovery_from_env,
     post_upper_joint_position_from_env,
     ee_reach_from_env,
+    body_intercept_from_env,
     stopball_from_env,
     target_success_from_env,
     goal_conceded_cost,
@@ -47,6 +49,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.rewards import (
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     reset_shot_outcome_state,
 )
+from booster_mjlab.tasks.goalkeeper.mdp.interception import InterceptionCfg
 from booster_mjlab.tasks.goalkeeper.mdp.outcomes import (
     reset_goalkeeper_outcome_state,
     update_goalkeeper_outcome_state,
@@ -246,6 +249,7 @@ def booster_k1_goalkeeper_env_cfg(
         body_names=("Trunk", "left_foot_link", "right_foot_link"),
         preserve_order=True,
     )
+    guidance = asdict(InterceptionCfg())
     cfg.rewards["eereach"] = RewardTermCfg(
         func=ee_reach_from_env,
         weight=10.0,
@@ -254,10 +258,14 @@ def booster_k1_goalkeeper_env_cfg(
             "ball_name": "ball",
             "distance_sigma": 5.0,
             "reach_threshold": 0.2,
-            "movement_weight": 3.0,
-            "movement_fade_distance": 0.3,
-            "movement_speed_limit": 1.0,
+            "guidance": deepcopy(guidance),
         },
+    )
+    cfg.rewards["body_intercept"] = RewardTermCfg(
+        func=body_intercept_from_env, weight=10.,
+        params={"blocker_cfg": deepcopy(blocker_cfg), "guidance": deepcopy(guidance),
+                "lateral_reach": .3, "movement_weight": .5, "fade_distance": .3,
+                "speed_limit": 1., "reach_threshold": .2},
     )
     cfg.rewards["stopball"] = RewardTermCfg(
         func=stopball_from_env,
@@ -291,6 +299,7 @@ def booster_k1_goalkeeper_env_cfg(
         params={
             "blocker_cfg": deepcopy(blocker_cfg),
             "strict_threshold": 0.15,
+            "guidance": deepcopy(guidance),
         },
     )
     cfg.rewards["successland"] = RewardTermCfg(

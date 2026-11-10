@@ -35,7 +35,10 @@ from booster_mjlab.tasks.goalkeeper.config.k1.rl_cfg import (
 from booster_mjlab.tasks.goalkeeper.scene.events import sample_six_region_shots
 from booster_mjlab.tasks.goalkeeper.scene.settings import FullGoalSettings
 from booster_mjlab.tasks.goalkeeper.mdp.rewards import intercept_movement_reward
-from booster_mjlab.tasks.goalkeeper.mdp.shot_state import get_blocker_target_kinematics
+from booster_mjlab.tasks.goalkeeper.mdp.interception import interception_features
+from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
+    get_blocker_target_kinematics, nearest_intercept_kinematics,
+)
 from booster_mjlab.scripts.goalkeeper_hand_timing import (
     add_hand_contact_sensors,
     hand_timing_sample,
@@ -117,7 +120,6 @@ def install_reach_probe(env):
             dim=1,
         )
         target = current_env._full_goal_shots["target_position_e"]
-        distances = (points - origin[:, None] - target[:, None]).norm(dim=-1)
         torso = robot.data.body_link_pos_w[:, asset.body_ids[0]] - origin
         velocity = robot.data.body_link_lin_vel_w[:, asset.body_ids[0]]
         ball = current_env.scene["ball"]
@@ -132,13 +134,25 @@ def install_reach_probe(env):
             & ~outcome.shot_resolved
         )
         distance, closing_speed = get_blocker_target_kinematics(current_env, asset)
-        movement = intercept_movement_reward(
-            distance, closing_speed,
-            **{name: params[name] for name in (
-                "reach_threshold", "movement_weight", "movement_fade_distance",
-                "movement_speed_limit",
-            )},
-        )
+        time_weight, settling, tau, body = 1., 1., 0., 0.
+        if "guidance" in params:
+            f = interception_features(current_env, asset, guidance=params["guidance"])
+            target, distance, active = f["target"], f["distance"], f["active"]
+            velocities = torch.cat((robot.data.site_lin_vel_w[:, asset.site_ids],
+                                    robot.data.body_link_lin_vel_w[:, asset.body_ids]), dim=1)
+            _, closing_speed = nearest_intercept_kinematics(points - origin[:, None], velocities, target)
+            time_weight, settling, tau = (float(f[k].item()) for k in ("time_weight", "settling", "tau"))
+            movement = torch.zeros_like(distance)
+            body_cfg = current_env.reward_manager.get_term_cfg("body_intercept")
+            body = float(body_cfg.func(current_env, **body_cfg.params).item())
+        else:
+            movement = intercept_movement_reward(
+                distance, closing_speed,
+                **{name: params[name] for name in (
+                    "reach_threshold", "movement_weight", "movement_fade_distance", "movement_speed_limit",
+                )},
+            )
+        distances = (points - origin[:, None] - target[:, None]).norm(dim=-1)
         current_env._reach_probe = {
             "reach_raw": float(reward.item()),
             "reach_active": bool(active.item()),
@@ -150,6 +164,12 @@ def install_reach_probe(env):
             "reward_lateral_error": float(target[0, 1] - torso[0, 1]),
             "reach_closing_speed": float(closing_speed.item()),
             "reach_movement_raw": float(movement.item()),
+            "body_movement_raw": body,
+            "reach_time_to_plane": tau,
+            "reach_time_weight": time_weight,
+            "reach_settling": settling,
+            "corrected_target_y": float(target[0, 1]),
+            "corrected_target_z": float(target[0, 2]),
         }
         return reward
 
@@ -355,10 +375,12 @@ def summarize(rows, shot):
                 "reach_raw",
                 "reach_closing_speed",
                 "reach_movement_raw",
+                "body_movement_raw",
             ):
                 result[label][f"mean_{key}"] = float(np.mean([r[key] for r in subset]))
             for key in (
                 "task_eereach",
+                "task_body_intercept",
                 "task_smoothness",
                 "task_feet_slippage",
                 "task_feetorientaion",

@@ -55,11 +55,13 @@ scene.env_origins = origins
 env = NS(
     num_envs=batch, device="cpu", common_step_counter=0, scene=scene,
     _full_goal_shots={
+        "is_rolling": torch.zeros(batch, dtype=torch.bool),
         "region": region,
         "target_position_e": targets,
         "velocity": scene["ball"].data.root_link_lin_vel_w.clone(),
     },
     _goalkeeper_outcome_state=NS(shot_resolved=torch.zeros(batch, dtype=torch.bool)),
+    cfg=NS(sim=NS(mujoco=NS(gravity=(0., 0., -9.81)))),
 )
 cfg = SceneEntityCfg("robot", site_ids=site_ids, body_ids=body_ids)
 reset_shot_outcome_state(env)
@@ -67,8 +69,8 @@ distance = get_blocker_target_distance(env, cfg)
 torch.testing.assert_close(distance, torch.full((batch,), 0.1), atol=5e-6, rtol=1e-5)
 reach = ee_reach_from_env(env, cfg)
 success = target_success_from_env(env, cfg)
-torch.testing.assert_close(reach, torch.sigmoid(torch.full((batch,), 0.5)), atol=5e-6, rtol=1e-5)
-torch.testing.assert_close(success, torch.ones(batch))
+torch.testing.assert_close(reach, .2 * torch.sigmoid(torch.full((batch,), 0.5)), atol=5e-6, rtol=1e-5)
+torch.testing.assert_close(success, torch.full((batch,), .2))
 assert not env._goalkeeper_shot_state.success_flag.any(), "Proximity must not mark a save"
 
 # Mirror the full geometry, including nonzero environment origins.
@@ -88,7 +90,7 @@ for row, point in enumerate(selected.tolist()):
     points[row, index] = targets[row] + origins[row] + torch.tensor([0.0, 0.16, 0.0])
 assert not target_success_from_env(env, cfg).any()
 torch.testing.assert_close(
-    ee_reach_from_env(env, cfg), torch.sigmoid(torch.full((batch,), 0.2)),
+    ee_reach_from_env(env, cfg), .2 * torch.sigmoid(torch.full((batch,), 0.2)),
     atol=5e-6, rtol=1e-5,
 )
 

@@ -29,7 +29,10 @@ hand_positions[1, 1] = targets[1] + torch.tensor([0.0, 0.2, 0.0])
 scene = FakeScene(
     robot=NS(data=NS(
         site_pos_w=hand_positions,
+        site_lin_vel_w=torch.zeros_like(hand_positions),
         body_link_pos_w=torch.full((2, 3, 3), 10.0),
+        body_link_lin_vel_w=torch.zeros((2, 3, 3)),
+        projected_gravity_b=torch.tensor([[0., 0., -1.]]).repeat(2, 1),
     )),
     ball=NS(
         data=NS(
@@ -52,6 +55,7 @@ env = NS(
     common_step_counter=0,
     scene=scene,
     _full_goal_shots={
+        "is_rolling": torch.zeros(2, dtype=torch.bool),
         "target_position_e": targets,
         "region": torch.tensor([0, 1]),
         "velocity": torch.tensor([[-4.0, 0.0, 0.0]]).repeat(2, 1),
@@ -59,6 +63,7 @@ env = NS(
     _goalkeeper_outcome_state=NS(
         shot_resolved=torch.zeros(2, dtype=torch.bool),
     ),
+    cfg=NS(sim=NS(mujoco=NS(gravity=(0., 0., -9.81)))),
 )
 
 blocker_cfg = SceneEntityCfg("robot", site_ids=[0, 1], body_ids=[0, 1, 2])
@@ -69,7 +74,7 @@ reset_shot_outcome_state(env, None)
 success_first = target_success_from_env(env, blocker_cfg).clone()
 stop_after = stopball_from_env(env).clone()
 
-torch.testing.assert_close(success_first, torch.tensor([1.0, 0.0]))
+torch.testing.assert_close(success_first, torch.zeros(2))  # velocity proxy closes coverage
 torch.testing.assert_close(stop_after, torch.tensor([1.0, 0.0]))
 
 # 顺序二：清理状态后，stopball → success。
@@ -86,7 +91,7 @@ env.common_step_counter += 1
 
 torch.testing.assert_close(
     target_success_from_env(env, blocker_cfg),
-    torch.tensor([2.0, 0.0]),
+    torch.zeros(2),
 )
 torch.testing.assert_close(
     stopball_from_env(env),

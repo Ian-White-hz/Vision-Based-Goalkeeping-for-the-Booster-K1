@@ -106,10 +106,13 @@ def make_runner(
     bind_interfaces=True,
     expert_sampler_factory=None,
     motion_id_reader=None,
+    obs_normalization=False,
 ):
     cfg = CategoricalAmpRunnerCfg()
     cfg.actor.hidden_dims = (32, 16)
     cfg.critic.hidden_dims = (32, 16)
+    cfg.actor.obs_normalization = obs_normalization
+    cfg.critic.obs_normalization = obs_normalization
     cfg.amp.hidden_layer_sizes = amp_hidden_dims
     cfg.num_steps_per_env = num_steps
     cfg.algorithm.num_learning_epochs = epochs
