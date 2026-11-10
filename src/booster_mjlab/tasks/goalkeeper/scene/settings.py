@@ -27,6 +27,7 @@ class FullGoalSettings:
     stop_hold_s: float = 0.4
     stop_distance: float = 0.75
     goal_penalty: float = 20.0
+    fall_penalty: float = 20.0
     heading_penalty: float = 5.0
     yaw_rate_penalty: float = 1.0
     heading_deadband_deg: float = 20.0
@@ -56,7 +57,7 @@ class FullGoalSettings:
     )
 
     def __post_init__(self):
-        for name in ("heading_penalty", "yaw_rate_penalty"):
+        for name in ("fall_penalty", "heading_penalty", "yaw_rate_penalty"):
             value = getattr(self, name)
             if not math.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and nonnegative")

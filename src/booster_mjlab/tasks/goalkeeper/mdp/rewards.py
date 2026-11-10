@@ -35,6 +35,20 @@ def goal_conceded_cost(env: ManagerBasedRlEnv) -> torch.Tensor:
     return event.float() / scale
 
 
+def fall_termination_cost(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Fixed cost on the excessive-tilt terminal step, independent of dt.
+
+    Reuse that termination's configured predicate, never aggregate done flags.
+    Reading the current pose also avoids cached terminal masks after auto-reset.
+    The environment requires reset before another step after termination, so
+    this event is charged once per failed episode; repeated reads are stable.
+    """
+    term = env.termination_manager.get_term_cfg("excessive_body_tilt")
+    fallen = term.func(env, **term.params)
+    scale = env.step_dt if env.cfg.scale_rewards_by_dt else 1.0
+    return fallen.float() / scale
+
+
 def heading_deviation_cost(
     quaternion_w: torch.Tensor,
     reference_quaternion_w: torch.Tensor,
@@ -848,7 +862,7 @@ def body_intercept_from_env(
     env: ManagerBasedRlEnv, blocker_cfg: SceneEntityCfg, ball_name: str = "ball",
     guidance: dict | None = None, lateral_reach: float = .3,
     movement_weight: float = .5, fade_distance: float = .3,
-    speed_limit: float = 1., reach_threshold: float = .2,
+    speed_limit: float = 1., reach_threshold: float = .05,
 ) -> torch.Tensor:
     """Independent, bounded root lateral progress, never a hand-speed reward."""
     f = interception_features(env, blocker_cfg, ball_name=ball_name, guidance=guidance,

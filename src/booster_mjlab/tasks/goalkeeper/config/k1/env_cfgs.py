@@ -43,6 +43,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.rewards import (
     stopball_from_env,
     target_success_from_env,
     goal_conceded_cost,
+    fall_termination_cost,
     heading_deviation_from_env,
     excessive_yaw_rate_from_env,
 )
@@ -265,7 +266,7 @@ def booster_k1_goalkeeper_env_cfg(
         func=body_intercept_from_env, weight=10.,
         params={"blocker_cfg": deepcopy(blocker_cfg), "guidance": deepcopy(guidance),
                 "lateral_reach": .3, "movement_weight": .5, "fade_distance": .3,
-                "speed_limit": 1., "reach_threshold": .2},
+                "speed_limit": 1., "reach_threshold": .05},
     )
     cfg.rewards["stopball"] = RewardTermCfg(
         func=stopball_from_env,
@@ -274,6 +275,10 @@ def booster_k1_goalkeeper_env_cfg(
     cfg.rewards["goal_conceded"] = RewardTermCfg(
         func=goal_conceded_cost,
         weight=-settings.goal_penalty,
+    )
+    cfg.rewards["fall"] = RewardTermCfg(
+        func=fall_termination_cost,
+        weight=-settings.fall_penalty,
     )
     cfg.rewards["heading_deviation"] = RewardTermCfg(
         func=heading_deviation_from_env,

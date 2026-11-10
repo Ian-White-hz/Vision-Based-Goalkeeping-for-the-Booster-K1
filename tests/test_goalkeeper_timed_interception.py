@@ -53,14 +53,15 @@ p, _, valid = intercept_prediction(pos, vel, nominal, rolling, torch.tensor([0.,
 assert not valid.any() and torch.isfinite(p).all()
 
 # +/- target direction, wrong-way root motion, overshoot, in-reach targets,
-# and any blocker already attained. No arm velocity occurs in this interface.
+# and a near blocker that still receives guidance outside 5 cm. No arm
+# velocity occurs in this interface.
 target_y = torch.tensor([.8, -.8, .8, .8, .2, .8])
 root_y = torch.tensor([0., 0., 0., 1.6, 0., 0.])
 vy = torch.full((6,), .5)
 d = torch.tensor([.6, .6, .6, .6, .6, .1])
 vy[2] = -.5
 r = body_lateral_progress(target_y, root_y, vy, d)
-torch.testing.assert_close(r, torch.tensor([.25, -.25, -.25, -.25, 0., 0.]))
+torch.testing.assert_close(r, torch.tensor([.25, -.25, -.25, -.25, 0., 1 / 24]))
 assert body_lateral_progress(target_y, root_y, vy * 0, d).eq(0).all()
 assert body_lateral_progress(target_y, root_y, vy, d, movement_weight=0).eq(0).all()
 for kwargs in ({'arrival_window_s':0.}, {'prediction_limit_m':-1.}, {'settling_weight':1.1},

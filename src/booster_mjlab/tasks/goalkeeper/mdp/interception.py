@@ -82,7 +82,7 @@ def coverage_factors(distance, speed, tau, cfg, *, reach_threshold=.2):
 
 def body_lateral_progress(target_y, root_y, root_vy, blocker_distance, *,
                           lateral_reach=.3, movement_weight=.5,
-                          fade_distance=.3, speed_limit=1., reach_threshold=.2):
+                          fade_distance=.3, speed_limit=1., reach_threshold=.05):
     """Only real root translation earns movement reward; hands only gate it off.
 
     A reachable lateral corridor avoids forcing body motion for nearby balls.
