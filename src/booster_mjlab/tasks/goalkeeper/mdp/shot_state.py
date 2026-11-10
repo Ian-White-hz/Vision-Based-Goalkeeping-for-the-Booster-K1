@@ -10,6 +10,25 @@ from mjlab.managers import SceneEntityCfg
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
 
+
+def robot_ball_contact_this_step(
+    env: ManagerBasedRlEnv,
+    sensor_name: str = "robot_ball_contact",
+) -> torch.Tensor:
+    """Robot-ball contact in this control step, including earlier substeps."""
+    try:
+        contact = env.scene[sensor_name].data
+    except KeyError as error:
+        raise RuntimeError(
+            f"Goalkeeper outcomes require the robot-ball contact sensor {sensor_name!r}"
+        ) from error
+    if contact.found is None or contact.force_history is None:
+        raise RuntimeError("Robot-ball contact sensor requires found and force history")
+    return (contact.found > 0).any(dim=1) | (
+        contact.force_history.square().sum(dim=-1) > 1.0e-12
+    ).any(dim=(1, 2))
+
+
 class GoalKeeperShotState:
     def __init__(
         self,
@@ -66,23 +85,10 @@ class GoalKeeperShotState:
         is_rolling = shots.get("is_rolling", torch.zeros_like(self.stop_flag))
         robot_ball_contact = torch.zeros_like(self.stop_flag)
         if is_rolling.any():
-            try:
-                contact = env.scene[self.contact_sensor_name].data
-            except KeyError as error:
-                raise RuntimeError(
-                    "Rolling shot success requires the robot-ball contact sensor "
-                    f"{self.contact_sensor_name!r}"
-                ) from error
-            if contact.found is None or contact.force_history is None:
-                raise RuntimeError(
-                    "Robot-ball contact sensor requires found and force history"
-                )
             # A collision may end before the final physics substep. Only keep
             # contact evidence from this control step, not the whole episode:
             # a light touch followed much later by friction is not a save.
-            robot_ball_contact = (contact.found > 0).any(dim=1) | (
-                contact.force_history.square().sum(dim=-1) > 1.0e-12
-            ).any(dim=(1, 2))
+            robot_ball_contact = robot_ball_contact_this_step(env, self.contact_sensor_name)
 
         reward, next_stop, next_success = stopball_transition(
             ball_position_x_e=(
@@ -231,6 +237,110 @@ def get_hand_target_distance(
         selected_hand_e - shots["target_position_e"],
         dim=-1
     )
+
+def get_blocker_target_distance(
+    env: ManagerBasedRlEnv,
+    blocker_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Nearest configured hand site or body origin to the intercept target.
+
+    Both reach shaping and target attainment use this geometry. Proximity is
+    not evidence of physical ball contact or a final save.
+    """
+    return nearest_intercept_distance(
+        get_blocker_positions_e(env, blocker_cfg),
+        env._full_goal_shots["target_position_e"],
+    )
+
+
+def get_blocker_positions_e(
+    env: ManagerBasedRlEnv, blocker_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Configured blocker origins in the fixed per-environment field frame."""
+    robot = env.scene[blocker_cfg.name]
+    points_w = torch.cat(
+        (
+            robot.data.site_pos_w[:, blocker_cfg.site_ids, :],
+            robot.data.body_link_pos_w[:, blocker_cfg.body_ids, :],
+        ),
+        dim=1,
+    )
+    return points_w - env.scene.env_origins[:, None, :]
+
+
+def get_blocker_target_kinematics(
+    env: ManagerBasedRlEnv, blocker_cfg: SceneEntityCfg,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Nearest distance and its instantaneous closing speed, in m and m/s.
+
+    The intercept target is fixed during a shot. Use each site's velocity at
+    that site, including link rotation, rather than the torso's velocity.
+    """
+    robot = env.scene[blocker_cfg.name]
+    velocities = torch.cat((
+        robot.data.site_lin_vel_w[:, blocker_cfg.site_ids, :],
+        robot.data.body_link_lin_vel_w[:, blocker_cfg.body_ids, :],
+    ), dim=1)
+    return nearest_intercept_kinematics(
+        get_blocker_positions_e(env, blocker_cfg), velocities,
+        env._full_goal_shots["target_position_e"],
+    )
+
+
+def nearest_intercept_kinematics(
+    blocker_positions_e: torch.Tensor,
+    blocker_velocities_w: torch.Tensor,
+    target_position_e: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Signed rate of decrease of the same nearest-point distance as success.
+
+    Positive means approaching; tangential motion is zero. At exact distance
+    ties, the largest closing speed is the negative right derivative of the
+    minimum distance, independent of candidate order. At zero distance,
+    use zero (movement shaping is disabled inside the attainment radius).
+    """
+    distance = nearest_intercept_distance(blocker_positions_e, target_position_e)
+    if blocker_velocities_w.shape != blocker_positions_e.shape:
+        raise ValueError("Blocker velocities must match position shape (B, K, 3)")
+    error = target_position_e[:, None, :] - blocker_positions_e
+    distances = torch.linalg.vector_norm(error, dim=-1)
+    closing = (error * blocker_velocities_w).sum(dim=-1) / distances.clamp_min(1e-8)
+    closing = torch.where(distances > 0, closing, 0.0)
+    nearest = distances == distance[:, None]
+    return distance, closing.masked_fill(~nearest, -torch.inf).amax(dim=1)
+
+
+def nearest_intercept_distance(
+    blocker_positions_e: torch.Tensor,
+    target_position_e: torch.Tensor,
+) -> torch.Tensor:
+    if (
+        blocker_positions_e.ndim != 3
+        or blocker_positions_e.shape[-1] != 3
+        or blocker_positions_e.shape[1] == 0
+    ):
+        raise ValueError(
+            "blocker_positions_e must have shape (B, K, 3), K > 0"
+        )
+
+    batch_size = blocker_positions_e.shape[0]
+
+    if target_position_e.shape != (batch_size, 3):
+        raise ValueError(
+            "target_position_e must have shape (B, 3)"
+        )
+
+    differences = (
+        blocker_positions_e
+        - target_position_e[:, None, :]
+    )
+
+    distances = torch.linalg.vector_norm(
+        differences,
+        dim=-1
+    )
+
+    return distances.amin(dim=1)
 
 def stopball_transition(
     ball_position_x_e: torch.Tensor,

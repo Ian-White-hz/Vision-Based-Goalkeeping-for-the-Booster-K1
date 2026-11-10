@@ -8,11 +8,13 @@ from mjlab.managers.reward_manager import RewardTermCfg
 
 from mjlab.utils.lab_api.math import quat_apply_inverse
 
+from .outcomes import update_goalkeeper_outcome_state
 from .shot_state import (
     get_recovery_mask,
-    get_hand_target_distance,
-    stopball_transition,
-    get_shot_outcome_state
+    get_blocker_target_distance,
+    get_blocker_target_kinematics,
+    stopball_transition as stopball_transition,  # Public compatibility export.
+    get_shot_outcome_state,
 )
 
 import math
@@ -20,6 +22,96 @@ import torch
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
+
+
+def goal_conceded_cost(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """One goal event per shot, normalized so its weighted cost is dt invariant.
+
+    Repeated reads in the same control step return the same pulse; this is
+    intentionally not consumed by a metric or another reward reader.
+    """
+    state = update_goalkeeper_outcome_state(env)
+    event = state.goal_conceded & (state.goal_conceded_step == env.common_step_counter)
+    scale = env.step_dt if env.cfg.scale_rewards_by_dt else 1.0
+    return event.float() / scale
+
+
+def heading_deviation_cost(
+    quaternion_w: torch.Tensor,
+    reference_quaternion_w: torch.Tensor,
+    *,
+    deadband_deg: float = 20.0,
+    full_penalty_deg: float = 90.0,
+) -> torch.Tensor:
+    """Bounded squared heading excess, with a shortest-angle deadband."""
+    if (
+        quaternion_w.ndim != 2 or quaternion_w.shape[-1] != 4
+        or reference_quaternion_w.shape != quaternion_w.shape
+    ):
+        raise ValueError("Quaternions must have matching (num_envs, 4) shapes")
+    if (
+        not math.isfinite(deadband_deg) or not math.isfinite(full_penalty_deg)
+        or not 0.0 <= deadband_deg < full_penalty_deg <= 180.0
+    ):
+        raise ValueError("Require 0 <= heading deadband < full penalty <= 180")
+
+    def heading(q):
+        w, x, y, z = q.unbind(-1)
+        return torch.atan2(2 * (w * z + x * y), 1 - 2 * (y.square() + z.square()))
+
+    delta = heading(quaternion_w) - heading(reference_quaternion_w)
+    error = torch.atan2(torch.sin(delta), torch.cos(delta)).abs()
+    lower, upper = math.radians(deadband_deg), math.radians(full_penalty_deg)
+    return ((error - lower) / (upper - lower)).clamp(0.0, 1.0).square()
+
+
+def excessive_yaw_rate_cost(
+    angular_velocity_z_w: torch.Tensor,
+    *,
+    deadband: float = 0.5,
+    full_penalty_rate: float = 3.0,
+) -> torch.Tensor:
+    """Bounded squared world-vertical angular-speed excess, in rad/s."""
+    if angular_velocity_z_w.ndim != 1:
+        raise ValueError("Vertical angular velocity must have shape (num_envs,)")
+    if (
+        not math.isfinite(deadband) or not math.isfinite(full_penalty_rate)
+        or not 0.0 <= deadband < full_penalty_rate
+    ):
+        raise ValueError("Require 0 <= yaw-rate deadband < full penalty rate")
+    excess = (angular_velocity_z_w.abs() - deadband) / (full_penalty_rate - deadband)
+    return excess.clamp(0.0, 1.0).square()
+
+
+def heading_deviation_from_env(
+    env: ManagerBasedRlEnv,
+    robot_name: str = "robot",
+    deadband_deg: float = 20.0,
+    full_penalty_deg: float = 90.0,
+) -> torch.Tensor:
+    """Keep the reset configuration's guard heading; no new Actor observation."""
+    robot = env.scene[robot_name]
+    return heading_deviation_cost(
+        robot.data.root_link_quat_w,
+        robot.data.default_root_state[:, 3:7],
+        deadband_deg=deadband_deg,
+        full_penalty_deg=full_penalty_deg,
+    )
+
+
+def excessive_yaw_rate_from_env(
+    env: ManagerBasedRlEnv,
+    robot_name: str = "robot",
+    deadband: float = 0.5,
+    full_penalty_rate: float = 3.0,
+) -> torch.Tensor:
+    robot = env.scene[robot_name]
+    return excessive_yaw_rate_cost(
+        robot.data.root_link_ang_vel_w[:, 2],
+        deadband=deadband,
+        full_penalty_rate=full_penalty_rate,
+    )
+
 
 class MotorLimitPenalty:
 
@@ -642,135 +734,153 @@ def jump_landing_reward(
 
     return reward * jump_mask.to(dtype=reward.dtype)
 
-def ee_reach_reward(
+def intercept_proximity_reward(
     distance: torch.Tensor,
-    target_position_e: torch.Tensor,
-    torso_position_e: torch.Tensor,
-    body_velocity_w: torch.Tensor,
-    projected_gravity_b: torch.Tensor,
-    ball_position_x_e: torch.Tensor,
-    ball_velocity_x_w: torch.Tensor,
-    launch_velocity_x_w: torch.Tensor,
-    region: torch.Tensor,
+    active_mask: torch.Tensor,
     *,
-    curriculum_level: float = 0.0,
     distance_sigma: float = 5.0,
     reach_threshold: float = 0.2,
 ) -> torch.Tensor:
-    """奖励机器人接近目标位置, shape (B,)"""
-    delta_vx = ball_velocity_x_w - launch_velocity_x_w
+    """有效拦截阶段内的距离奖励，返回 (B,)。"""
+    if distance.ndim != 1:
+        raise ValueError("distance must have shape (B,)")
 
-    phase1 = (
-        (ball_position_x_e > 1.5)
-        & (delta_vx < 2.0)
-    )
-    recovery = (
-        (ball_position_x_e < 0.0)
-        | (delta_vx > 2.0)
-    )
+    if (
+        active_mask.shape != distance.shape
+        or active_mask.dtype != torch.bool
+        or active_mask.device != distance.device
+    ):
+        raise ValueError(
+            "active_mask must be bool (B,) on the distance device"
+        )
 
-    # 远球阶段：身体横向对齐、根据目标高度调整高度。
-    lateral = (
-        target_position_e[:, 1] - torso_position_e[:, 1]
-    ).clamp(-1.0, 1.0)
+    if not math.isfinite(distance_sigma) or distance_sigma <= 0.0:
+        raise ValueError("distance_sigma must be finite and positive")
 
-    lateral = torch.where(
-        lateral.abs() < 0.3,
-        torch.zeros_like(lateral),
-        lateral,
-    )
+    if not math.isfinite(reach_threshold) or reach_threshold < 0.0:
+        raise ValueError("reach_threshold must be finite and nonnegative")
 
-    vertical = (
-        torso_position_e[:, 2]
-        - target_position_e[:, 2].clamp(0.3, 1.2)
-    ).clamp(0.0, 1.0)
-
-    alignment_reward = 1.0 - (
-        vertical + lateral.abs()
-    ) / 2.0
-
-    # 近球阶段：按区域鼓励对应方向的身体运动。
-    left_region = (region == 0) | (region == 4)
-    right_region = (region == 1) | (region == 5)
-    jump_region = (region == 2) | (region == 3)
-
-    velocity_scale = torch.zeros_like(distance)
-    velocity_scale = torch.where(
-        left_region,
-        1.0 + 3.0 * body_velocity_w[:, 1].clamp(0.0, 3.0),
-        velocity_scale,
-    )
-    velocity_scale = torch.where(
-        right_region,
-        1.0 - 3.0 * body_velocity_w[:, 1].clamp(-3.0, 0.0),
-        velocity_scale,
+    proximity = torch.sigmoid(
+        distance_sigma * (reach_threshold - distance)
     )
 
-    jump_scale = 3.0 + 3.0 * curriculum_level
-    velocity_scale = torch.where(
-        jump_region,
-        1.0 + jump_scale * body_velocity_w[:, 2].clamp(0.0, 3.0),
-        velocity_scale,
-    )
-    velocity_scale = torch.where(
-        recovery,
-        torch.full_like(velocity_scale, 2.0),
-        velocity_scale,
+    return torch.where(
+        active_mask,
+        proximity,
+        torch.zeros_like(proximity)
     )
 
-    # 与原项目的逻辑等价，但 sigmoid 写法数值更稳定。
-    distance_reward = torch.sigmoid(
-        -distance_sigma * (distance - reach_threshold)
+def intercept_movement_reward(
+    distance: torch.Tensor,
+    closing_speed: torch.Tensor,
+    *,
+    reach_threshold: float = 0.2,
+    movement_weight: float = 3.0,
+    movement_fade_distance: float = 0.3,
+    movement_speed_limit: float = 1.0,
+) -> torch.Tensor:
+    """Bounded signed approach reward, fading to zero at blocker attainment.
+
+    Closing speed is -d(distance)/dt for the current nearest blocker, not a
+    region-selected torso velocity. No history or episode state is needed.
+    """
+    if distance.ndim != 1 or closing_speed.shape != distance.shape:
+        raise ValueError("Distance and closing speed must have matching (B,) shapes")
+    for name, value in (("reach_threshold", reach_threshold), ("movement_weight", movement_weight)):
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be finite and nonnegative")
+    for name, value in (
+        ("movement_fade_distance", movement_fade_distance),
+        ("movement_speed_limit", movement_speed_limit),
+    ):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
+    gate = ((distance - reach_threshold) / movement_fade_distance).clamp(0, 1)
+    speed = closing_speed.clamp(-movement_speed_limit, movement_speed_limit)
+    return movement_weight * gate * speed
+
+
+def movement_guided_intercept_reward(
+    distance: torch.Tensor,
+    active_mask: torch.Tensor,
+    closing_speed: torch.Tensor,
+    projected_gravity_b: torch.Tensor,
+    *,
+    distance_sigma: float = 5.0,
+    reach_threshold: float = 0.2,
+    movement_weight: float = 3.0,
+    movement_fade_distance: float = 0.3,
+    movement_speed_limit: float = 1.0,
+) -> torch.Tensor:
+    """Nearest-blocker proximity plus signed progress, for the whole approach."""
+    proximity = intercept_proximity_reward(
+        distance, active_mask,
+        distance_sigma=distance_sigma, reach_threshold=reach_threshold,
     )
-    reach_reward = distance_reward * velocity_scale
-
-    reward = torch.where(
-        phase1,
-        alignment_reward,
-        reach_reward,
+    movement = intercept_movement_reward(
+        distance, closing_speed,
+        reach_threshold=reach_threshold, movement_weight=movement_weight,
+        movement_fade_distance=movement_fade_distance,
+        movement_speed_limit=movement_speed_limit,
     )
-
-    upright = 1.0 - projected_gravity_b[:, :2].square().sum(
-        dim=1
-    ).clamp(0.0, 1.0)
-
-    return reward * upright
+    reward = proximity + movement
+    upright = 1.0 - projected_gravity_b[:, :2].square().sum(dim=1).clamp(0, 1)
+    return torch.where(active_mask, reward * upright, torch.zeros_like(reward))
 
 def ee_reach_from_env(
     env: ManagerBasedRlEnv,
-    hand_cfg: SceneEntityCfg,
+    blocker_cfg: SceneEntityCfg,
     ball_name: str = "ball",
-    curriculum_level: float = 0.0,
     distance_sigma: float = 5.0,
     reach_threshold: float = 0.2,
+    movement_weight: float = 3.0,
+    movement_fade_distance: float = 0.3,
+    movement_speed_limit: float = 1.0,
 ) -> torch.Tensor:
-    distance = get_hand_target_distance(env, hand_cfg)
-
-    robot = env.scene[hand_cfg.name]
+    robot = env.scene[blocker_cfg.name]
     ball = env.scene[ball_name]
     shots = env._full_goal_shots
     origins = env.scene.env_origins
 
-    reward = ee_reach_reward(
-        distance=distance,
-        target_position_e=shots["target_position_e"],
-        torso_position_e=(
-            robot.data.root_link_pos_w - origins
-        ),
-        body_velocity_w=robot.data.root_link_lin_vel_w,
-        projected_gravity_b=robot.data.projected_gravity_b,
-        ball_position_x_e=(
-            ball.data.root_link_pos_w[:, 0] - origins[:, 0]
-        ),
-        ball_velocity_x_w=ball.data.root_link_lin_vel_w[:, 0],
-        launch_velocity_x_w=shots["velocity"][:, 0],
-        region=shots["region"],
-        curriculum_level=curriculum_level,
-        distance_sigma=distance_sigma,
-        reach_threshold=reach_threshold,
+    target_position_e = shots["target_position_e"]
+    distance, closing_speed = get_blocker_target_kinematics(env, blocker_cfg)
+
+    ball_position_x_e = (
+        ball.data.root_link_pos_w[:, 0] - origins[:, 0]
+    )
+    velocity_x = ball.data.root_link_lin_vel_w[:, 0]
+
+    shot_state = get_shot_outcome_state(env)
+    outcome = env._goalkeeper_outcome_state
+
+    valid = (
+        torch.isfinite(target_position_e).all(dim=1)
+        & torch.isfinite(distance)
+        & torch.isfinite(closing_speed)
+        & torch.isfinite(ball_position_x_e)
+        & torch.isfinite(velocity_x)
     )
 
-    return _active_shot_reward(env, reward)
+    active_mask = (
+        valid
+        & (velocity_x < -1.0e-6)
+        & (ball_position_x_e > target_position_e[:, 0])
+        & ~shot_state.stop_flag
+        & ~shot_state.success_flag
+        & ~outcome.shot_resolved
+    )
+
+    return movement_guided_intercept_reward(
+        distance,
+        active_mask,
+        closing_speed,
+        robot.data.projected_gravity_b,
+        distance_sigma=distance_sigma,
+        reach_threshold=reach_threshold,
+        movement_weight=movement_weight,
+        movement_fade_distance=movement_fade_distance,
+        movement_speed_limit=movement_speed_limit,
+    )
 
 def stopball_from_env(
     env: ManagerBasedRlEnv,
@@ -787,7 +897,7 @@ def target_success_reward(
     success_flag: torch.Tensor,
     strict_threshold: float = 0.15,
 ) -> torch.Tensor:
-    """奖励机器人成功接触目标, shape (B,)"""
+    """Reward target proximity, not physical contact or a final save, shape (B,)."""
     if (
         success_flag.dtype != torch.bool
         or success_flag.shape != distance.shape
@@ -800,10 +910,11 @@ def target_success_reward(
 
 def target_success_from_env(
     env: ManagerBasedRlEnv,
-    hand_cfg: SceneEntityCfg,
+    blocker_cfg: SceneEntityCfg,
     strict_threshold: float = 0.15,
 ) -> torch.Tensor:
-    distance = get_hand_target_distance(env, hand_cfg)
+    """Target attainment with the same allowed blockers as reach shaping."""
+    distance = get_blocker_target_distance(env, blocker_cfg)
     state = get_shot_outcome_state(env)
 
     reward = target_success_reward(

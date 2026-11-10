@@ -17,7 +17,8 @@ class FullGoalSettings:
     ball_friction: tuple[float, float, float] = (0.6, 0.005, 0.0001)
     start_x_range: tuple[float, float] = (1.8, 2.6)
     start_y_range: tuple[float, float] = (-1.4, 1.4)
-    speed_range: tuple[float, float] = (0.35, 0.50)
+    # speed_range: tuple[float, float] = (0.35, 0.50)
+    speed_range: tuple[float, float] = (1.0, 1.5)
     target_margin: float = 0.02
     robot_x_limit: float = 0.30
     robot_y_limit: float = 1.35
@@ -25,6 +26,13 @@ class FullGoalSettings:
     stop_speed: float = 0.12
     stop_hold_s: float = 0.4
     stop_distance: float = 0.75
+    goal_penalty: float = 20.0
+    heading_penalty: float = 5.0
+    yaw_rate_penalty: float = 1.0
+    heading_deadband_deg: float = 20.0
+    heading_full_penalty_deg: float = 90.0
+    yaw_rate_deadband: float = 0.5
+    yaw_rate_full_penalty: float = 3.0
     intercept_x: float = 0.1
     start_z_range: tuple[float, float] = (0.55, 0.85)
     flight_time_range: tuple[float, float] = (0.5, 0.8)
@@ -48,6 +56,22 @@ class FullGoalSettings:
     )
 
     def __post_init__(self):
+        for name in ("heading_penalty", "yaw_rate_penalty"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and nonnegative")
+        if (
+            not math.isfinite(self.heading_deadband_deg)
+            or not math.isfinite(self.heading_full_penalty_deg)
+            or not 0.0 <= self.heading_deadband_deg < self.heading_full_penalty_deg <= 180.0
+        ):
+            raise ValueError("Invalid heading penalty range")
+        if (
+            not math.isfinite(self.yaw_rate_deadband)
+            or not math.isfinite(self.yaw_rate_full_penalty)
+            or not 0.0 <= self.yaw_rate_deadband < self.yaw_rate_full_penalty
+        ):
+            raise ValueError("Invalid yaw-rate penalty range")
         for name in (
             "start_x_range",
             "start_y_range",
@@ -79,6 +103,7 @@ class FullGoalSettings:
             "stop_speed",
             "stop_hold_s",
             "stop_distance",
+            "goal_penalty",
             "ball_y_limit",
         ):
             if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:

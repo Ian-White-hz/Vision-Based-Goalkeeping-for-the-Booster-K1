@@ -102,6 +102,7 @@ def make_runner(
     save_interval=50,
     warm_start=False,
     style_weight=0.4,
+    reward_mode="source_noise",
     bind_interfaces=True,
     expert_sampler_factory=None,
     motion_id_reader=None,
@@ -119,6 +120,7 @@ def make_runner(
     cfg.save_interval = save_interval
     cfg.warm_start = warm_start
     cfg.amp.style_weight = style_weight
+    cfg.amp.reward_mode = reward_mode
     cfg.amp.expert_sampler_factory = expert_sampler_factory
     cfg.amp.motion_id_reader = motion_id_reader
     runner = CategoricalAmpOnPolicyRunner(

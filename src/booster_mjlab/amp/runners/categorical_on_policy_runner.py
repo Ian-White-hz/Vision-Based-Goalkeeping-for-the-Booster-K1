@@ -44,6 +44,7 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
             empirical_normalization=self.amp_cfg["empirical_normalization"],
             hidden_layer_sizes=tuple(self.amp_cfg["hidden_layer_sizes"]),
             logit_init_scale=self.amp_cfg["logit_init_scale"],
+            reward_mode=self.amp_cfg.get("reward_mode", "source_noise"),
         )
         self.alg.configure_amp(
             self.amp_model,
@@ -159,6 +160,8 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
         writer = self.logger.writer
         if writer is None:
             return
+        for name, value in self.alg.last_ppo_diagnostics.items():
+            writer.add_scalar(f"PPO/{name}", value, it)
         for name, value in summary["reward_means"].items():
             writer.add_scalar(f"AMP/step_reward/{name}", value, it)
         writer.add_scalar("AMP/valid_fraction", summary["amp_valid_fraction"], it)
@@ -204,7 +207,7 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
             "joint_names": list(K1_JOINT_ORDER),
             "motion_names": list(MOTION_NAMES),
             "style_weight": self.amp_cfg["style_weight"],
-            "reward_version": "least_squares_noise20_sigma0.3",
+            "reward_version": self.amp_model.reward_version,
             "normalizer_update": "normalized_policy_then_expert",
         }
 

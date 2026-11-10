@@ -15,7 +15,34 @@ def category_coverage(env, motion_id: int) -> torch.Tensor:
 
 def category_save(env, motion_id: int) -> torch.Tensor:
     category = get_amp_motion_ids(env) == motion_id
+    return (category & update_goalkeeper_outcome_state(env).saved).to(torch.float32)
+
+
+def category_contact(env, motion_id: int) -> torch.Tensor:
+    category = get_amp_motion_ids(env) == motion_id
+    return (category & update_goalkeeper_outcome_state(env).robot_contact_seen).to(
+        torch.float32
+    )
+
+
+def category_velocity_change(env, motion_id: int) -> torch.Tensor:
+    """Legacy stopball success flag, explicitly a velocity-change proxy."""
+    category = get_amp_motion_ids(env) == motion_id
     return (category & get_shot_outcome_state(env).success_flag).to(torch.float32)
+
+
+def category_miss(env, motion_id: int) -> torch.Tensor:
+    category = get_amp_motion_ids(env) == motion_id
+    state = update_goalkeeper_outcome_state(env)
+    return (category & state.shot_resolved & ~state.goal_conceded & ~state.saved).to(
+        torch.float32
+    )
+
+
+def category_unresolved(env, motion_id: int) -> torch.Tensor:
+    category = get_amp_motion_ids(env) == motion_id
+    state = update_goalkeeper_outcome_state(env)
+    return (category & ~state.shot_resolved & ~state.saved).to(torch.float32)
 
 
 def category_goal(env, motion_id: int) -> torch.Tensor:

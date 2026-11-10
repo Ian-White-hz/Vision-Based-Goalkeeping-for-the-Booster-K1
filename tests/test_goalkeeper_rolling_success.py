@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 import mjlab  # noqa: F401 -- initialize task imports before the reward modules
 import torch
 
-from booster_mjlab.tasks.goalkeeper.mdp.metrics import category_save
+from booster_mjlab.tasks.goalkeeper.mdp.metrics import category_velocity_change
 from booster_mjlab.tasks.goalkeeper.mdp.rewards import stopball_from_env
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     get_recovery_mask,
@@ -113,8 +113,8 @@ state = get_shot_outcome_state(env)
 assert not state.success_before_step.any()
 torch.testing.assert_close(stopball_from_env(env), torch.tensor([1.0, 1.0, 0.0]))
 torch.testing.assert_close(stopball_from_env(env), torch.tensor([1.0, 1.0, 0.0]))
-torch.testing.assert_close(category_save(env, 4), torch.tensor([1.0, 0.0, 0.0]))
-torch.testing.assert_close(category_save(env, 5), torch.tensor([0.0, 1.0, 0.0]))
+torch.testing.assert_close(category_velocity_change(env, 4), torch.tensor([1.0, 0.0, 0.0]))
+torch.testing.assert_close(category_velocity_change(env, 5), torch.tensor([0.0, 1.0, 0.0]))
 
 # A partial reset must not erase another environment's same-step reward.
 reset_shot_outcome_state(env, torch.tensor([1]))

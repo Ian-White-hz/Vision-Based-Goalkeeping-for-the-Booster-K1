@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Literal
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -39,6 +40,9 @@ from booster_mjlab.tasks.goalkeeper.mdp.rewards import (
     ee_reach_from_env,
     stopball_from_env,
     target_success_from_env,
+    goal_conceded_cost,
+    heading_deviation_from_env,
+    excessive_yaw_rate_from_env,
 )
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     reset_shot_outcome_state,
@@ -56,6 +60,10 @@ from booster_mjlab.tasks.goalkeeper.mdp.metrics import (
     category_fall,
     category_goal,
     category_save,
+    category_contact,
+    category_velocity_change,
+    category_miss,
+    category_unresolved,
 )
 
 
@@ -231,34 +239,57 @@ def booster_k1_goalkeeper_env_cfg(
             "coefficient": 1.0,
         },
     )
+    # Define allowed blockers once; each manager term resolves its own copy.
+    blocker_cfg = SceneEntityCfg(
+        "robot",
+        site_names=("left_hand", "right_hand"),
+        body_names=("Trunk", "left_foot_link", "right_foot_link"),
+        preserve_order=True,
+    )
     cfg.rewards["eereach"] = RewardTermCfg(
         func=ee_reach_from_env,
         weight=10.0,
         params={
-            "hand_cfg": SceneEntityCfg(
-                "robot",
-                site_names=("left_hand", "right_hand"),
-                preserve_order=True,
-            ),
+            "blocker_cfg": deepcopy(blocker_cfg),
             "ball_name": "ball",
-            "curriculum_level": 0.0,
             "distance_sigma": 5.0,
             "reach_threshold": 0.2,
+            "movement_weight": 3.0,
+            "movement_fade_distance": 0.3,
+            "movement_speed_limit": 1.0,
         },
     )
     cfg.rewards["stopball"] = RewardTermCfg(
         func=stopball_from_env,
         weight=100.0,
     )
+    cfg.rewards["goal_conceded"] = RewardTermCfg(
+        func=goal_conceded_cost,
+        weight=-settings.goal_penalty,
+    )
+    cfg.rewards["heading_deviation"] = RewardTermCfg(
+        func=heading_deviation_from_env,
+        weight=-settings.heading_penalty,
+        params={
+            "robot_name": "robot",
+            "deadband_deg": settings.heading_deadband_deg,
+            "full_penalty_deg": settings.heading_full_penalty_deg,
+        },
+    )
+    cfg.rewards["yaw_rate"] = RewardTermCfg(
+        func=excessive_yaw_rate_from_env,
+        weight=-settings.yaw_rate_penalty,
+        params={
+            "robot_name": "robot",
+            "deadband": settings.yaw_rate_deadband,
+            "full_penalty_rate": settings.yaw_rate_full_penalty,
+        },
+    )
     cfg.rewards["success"] = RewardTermCfg(
         func=target_success_from_env,
         weight=5.0,
         params={
-            "hand_cfg": SceneEntityCfg(
-                "robot",
-                site_names=("left_hand", "right_hand"),
-                preserve_order=True,
-            ),
+            "blocker_cfg": deepcopy(blocker_cfg),
             "strict_threshold": 0.15,
         },
     )
@@ -286,6 +317,17 @@ def booster_k1_goalkeeper_env_cfg(
             params=metric_params,
             reduce="last",
         )
+        for suffix, function in (
+            ("contact", category_contact),
+            ("velocity_change", category_velocity_change),
+            ("miss", category_miss),
+            ("unresolved", category_unresolved),
+        ):
+            cfg.metrics[f"Goalkeeper/{motion_name}/{suffix}"] = MetricsTermCfg(
+                func=function,
+                params=metric_params,
+                reduce="last",
+            )
         cfg.metrics[f"Goalkeeper/{motion_name}/goal"] = MetricsTermCfg(
             func=category_goal,
             params=metric_params,

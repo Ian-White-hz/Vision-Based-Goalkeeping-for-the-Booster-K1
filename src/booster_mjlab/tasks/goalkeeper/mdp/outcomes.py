@@ -1,4 +1,8 @@
+import math
+
 import torch
+
+from .shot_state import robot_ball_contact_this_step
 
 
 class GoalkeeperOutcomeState:
@@ -14,7 +18,19 @@ class GoalkeeperOutcomeState:
         ball_x_bounds: tuple[float, float],
         ball_y_limit: float,
         ground_tolerance: float = 0.01,
+        stop_speed: float = 0.12,
+        stop_hold_s: float = 0.4,
+        safe_stop_x: float = 0.1,
     ):
+        if (
+            not math.isfinite(stop_speed) or stop_speed <= 0.0
+            or not math.isfinite(stop_hold_s) or stop_hold_s <= 0.0
+            or not math.isfinite(safe_stop_x)
+        ):
+            raise ValueError("Invalid safe-stop parameters")
+        self.stop_speed = stop_speed
+        self.stop_hold_s = stop_hold_s
+        self.safe_stop_x = safe_stop_x
         self.goal_parameters = {
             "goal_x": goal_x,
             "goal_width": goal_width,
@@ -54,6 +70,13 @@ class GoalkeeperOutcomeState:
             self.goal_conceded_step,
             -1,
         )
+        self.robot_contact_seen = torch.zeros_like(self.goal_conceded)
+        self.cleared = torch.zeros_like(self.goal_conceded)
+        self.safe_stopped = torch.zeros_like(self.goal_conceded)
+        self.saved = torch.zeros_like(self.goal_conceded)
+        self.safe_stop_steps = torch.zeros_like(self.goal_conceded_step)
+        self.last_update_step = torch.full_like(self.goal_conceded_step, -1)
+        self._last_adapter_update_step: int | None = None
 
     def reset(
         self,
@@ -68,17 +91,40 @@ class GoalkeeperOutcomeState:
             self.goal_conceded,
             self.ball_out_of_bounds,
             self.shot_resolved,
+            self.robot_contact_seen,
+            self.cleared,
+            self.safe_stopped,
+            self.saved,
+            self.safe_stop_steps,
         ):
             value[ids] = False
 
         self.goal_conceded_step[ids] = -1
         self.shot_resolved_step[ids] = -1
+        self.last_update_step[ids] = -1
+        self._last_adapter_update_step = None
 
     def update(
         self,
         ball_position_e: torch.Tensor,
         step: int,
+        *,
+        ball_velocity_w: torch.Tensor | None = None,
+        robot_ball_contact: torch.Tensor | None = None,
+        step_dt: float | None = None,
     ):
+        fresh = self.last_update_step != step
+        if not fresh.any():
+            return
+        if robot_ball_contact is not None:
+            if (
+                robot_ball_contact.shape != self.robot_contact_seen.shape
+                or robot_ball_contact.dtype != torch.bool
+                or robot_ball_contact.device != self.robot_contact_seen.device
+            ):
+                raise ValueError("robot_ball_contact must be bool (num_envs,)")
+            self.robot_contact_seen |= fresh & robot_ball_contact
+
         crossed = goal_crossing_mask(
             self.previous_ball_position_e,
             ball_position_e,
@@ -90,7 +136,7 @@ class GoalkeeperOutcomeState:
             **self.boundary_parameters,
         )
 
-        active = ~self.shot_resolved
+        active = fresh & ~self.shot_resolved
 
         first_goal = active & crossed
         first_out = active & outside & ~crossed
@@ -102,8 +148,36 @@ class GoalkeeperOutcomeState:
         self.goal_conceded |= first_goal
         self.ball_out_of_bounds |= first_out
         self.shot_resolved |= newly_resolved
+        # Only a contact occurring by the out-of-bounds decision can earn a
+        # clearance. A later incidental contact cannot relabel an unassisted miss.
+        self.cleared |= first_out & self.robot_contact_seen
 
-        self.previous_ball_position_e.copy_(ball_position_e)
+        stopped = torch.zeros_like(self.safe_stopped)
+        if ball_velocity_w is not None:
+            if ball_velocity_w.shape != ball_position_e.shape:
+                raise ValueError("Ball velocity and position shapes must match")
+            if step_dt is None or not math.isfinite(step_dt) or step_dt <= 0.0:
+                raise ValueError("Safe-stop evaluation requires positive finite step_dt")
+            stopped = (
+                self.robot_contact_seen
+                & ~self.shot_resolved
+                & torch.isfinite(ball_position_e).all(dim=-1)
+                & torch.isfinite(ball_velocity_w).all(dim=-1)
+                & (ball_position_e[:, 0] >= self.safe_stop_x)
+                & (ball_velocity_w.norm(dim=-1) <= self.stop_speed)
+            )
+        next_count = torch.where(stopped, self.safe_stop_steps + 1, 0)
+        self.safe_stop_steps.copy_(torch.where(fresh, next_count, self.safe_stop_steps))
+        hold_steps = math.ceil(self.stop_hold_s / step_dt) if ball_velocity_w is not None else 1
+        safe_stopped = stopped & (self.safe_stop_steps >= hold_steps)
+        self.safe_stopped.copy_(torch.where(fresh, safe_stopped, self.safe_stopped))
+        # A held ball is only safe while the hold still applies. It does not
+        # end the episode early; if it moves and later concedes, save becomes false.
+        self.saved.copy_((self.cleared | self.safe_stopped) & ~self.goal_conceded)
+        self.previous_ball_position_e.copy_(
+            torch.where(fresh[:, None], ball_position_e, self.previous_ball_position_e)
+        )
+        self.last_update_step[fresh] = step
 
 
 def goal_crossing_mask(
@@ -205,6 +279,9 @@ def reset_goalkeeper_outcome_state(
             ball_radius=settings.ball_radius,
             ball_x_bounds=settings.ball_x_bounds,
             ball_y_limit=settings.ball_y_limit,
+            stop_speed=settings.stop_speed,
+            stop_hold_s=settings.stop_hold_s,
+            safe_stop_x=settings.intercept_x,
         )
         env._goalkeeper_outcome_state = state
 
@@ -243,14 +320,25 @@ def update_goalkeeper_outcome_state(
             "Call reset_goalkeeper_outcome_state first."
         )
 
+    # Many category metrics read this state every step. Avoid repeating sensor
+    # reductions and device synchronization; a partial reset invalidates this
+    # Python-side cache while per-environment freshness still protects other rows.
+    if state._last_adapter_update_step == env.common_step_counter:
+        return state
+
     ball_position_e = (
         env.scene[ball_name].data.root_link_pos_w
         - env.scene.env_origins
     )
 
+    ball = env.scene[ball_name]
     state.update(
         ball_position_e=ball_position_e,
         step=env.common_step_counter,
+        ball_velocity_w=ball.data.root_link_lin_vel_w,
+        robot_ball_contact=robot_ball_contact_this_step(env),
+        step_dt=env.step_dt,
     )
+    state._last_adapter_update_step = env.common_step_counter
 
     return state

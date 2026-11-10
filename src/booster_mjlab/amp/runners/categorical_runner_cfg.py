@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Literal
 
 from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
@@ -6,6 +7,8 @@ from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 @dataclass
 class CategoricalAmpCfg:
     style_weight: float = 0.4
+    reward_mode: Literal["source_noise", "direct"] = "source_noise"
+    """Source-compatible noisy reward, or score the actual window without noise."""
     gradient_penalty_coef: float = 0.5
     empirical_normalization: bool = True
     hidden_layer_sizes: tuple[int, ...] = (512, 256)

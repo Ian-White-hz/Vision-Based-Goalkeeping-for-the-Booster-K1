@@ -46,7 +46,7 @@ with torch.inference_mode():
         runner.env, alg, runner.amp_collector, obs, read_motion_ids, style_weight=0.4
     )
 torch.testing.assert_close(metrics["amp_raw"], torch.tensor([0.75, 0.0]))
-torch.testing.assert_close(rewards, torch.tensor([0.42, -0.24]))
+torch.testing.assert_close(rewards, torch.tensor([0.27, -0.24]))
 assert alg.storage.observations[AMP_IDS][0].tolist() == [0, 3]
 assert alg.storage.observations[AMP_VALID][0].tolist() == [True, False]
 torch.testing.assert_close(

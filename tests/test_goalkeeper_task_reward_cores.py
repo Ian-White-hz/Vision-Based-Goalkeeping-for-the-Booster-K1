@@ -1,99 +1,39 @@
 import math
 
+import mjlab
 import torch
 
 from booster_mjlab.tasks.goalkeeper.mdp.rewards import (
-    ee_reach_reward,
+    intercept_proximity_reward,
     target_success_reward,
     stopball_transition,
     post_upper_joint_position_exp,
 )
 
-batch_size = 10
 
-target = torch.zeros(batch_size, 3)
-target[:, 2] = 0.5
+# 新接近奖励：距离越小越好，阶段关闭后为零。
+distance = torch.tensor([0.1, 0.2, 0.3, 0.1])
+active = torch.tensor([True, True, True, False])
 
-torso = torch.zeros(batch_size, 3)
-torso[:, 2] = 0.5
-
-# 环境 0：远球阶段，横向误差 0.6，高度项 0.3。
-target[0, 1] = 0.6
-torso[0, 2] = 0.8
-
-velocity = torch.zeros(batch_size, 3)
-velocity[1, 1] = 0.5
-velocity[2, 1] = -0.5
-velocity[3:5, 2] = 0.5
-velocity[5, 1] = 0.5
-velocity[6, 1] = -0.5
-
-gravity = torch.zeros(batch_size, 3)
-gravity[:, 2] = -1.0
-gravity[9] = torch.tensor([0.0, 1.0, 0.0])
-
-ball_x = torch.ones(batch_size)
-ball_x[0] = 2.0
-ball_x[7] = -0.1
-
-launch_vx = torch.full((batch_size,), -4.0)
-ball_vx = launch_vx.clone()
-ball_vx[8] = -1.0
-
-region = torch.tensor([0, 0, 1, 2, 3, 4, 5, 0, 0, 0])
-
-reach_inputs = dict(
-    distance=torch.full((batch_size,), 0.2),
-    target_position_e=target,
-    torso_position_e=torso,
-    body_velocity_w=velocity,
-    projected_gravity_b=gravity,
-    ball_position_x_e=ball_x,
-    ball_velocity_x_w=ball_vx,
-    launch_velocity_x_w=launch_vx,
-    region=region,
+reach_reward = intercept_proximity_reward(
+    distance,
+    active,
 )
-
-reach_reward = ee_reach_reward(**reach_inputs)
-
-assert reach_reward.shape == (batch_size,)
-assert torch.isfinite(reach_reward).all()
 
 torch.testing.assert_close(
     reach_reward,
     torch.tensor([
-        0.55,
-        1.25, 1.25, 1.25, 1.25, 1.25, 1.25,
-        1.0, 1.0, 0.0,
+        0.6224593,
+        0.5,
+        0.3775407,
+        0.0,
     ]),
 )
 
-# 课程等级增加时，跳跃速度激励增强。
-advanced_reward = ee_reach_reward(
-    **reach_inputs,
-    curriculum_level=1.0,
-)
-torch.testing.assert_close(
-    advanced_reward[3:5],
-    torch.tensor([2.0, 2.0]),
-)
+assert reach_reward[0] > reach_reward[1] > reach_reward[2]
 
-print("eereach:", reach_reward)
+print("统一接近奖励:", reach_reward)
 
-distance_reward = ee_reach_reward(
-    distance=torch.tensor([0.1, 0.2, 0.3]),
-    target_position_e=target[:3],
-    torso_position_e=torso[:3],
-    body_velocity_w=torch.zeros(3, 3),
-    projected_gravity_b=gravity[:3],
-    ball_position_x_e=torch.ones(3),
-    ball_velocity_x_w=torch.full((3,), -4.0),
-    launch_velocity_x_w=torch.full((3,), -4.0),
-    region=torch.zeros(3, dtype=torch.long),
-)
-
-assert distance_reward[0] > distance_reward[1]
-assert distance_reward[1] > distance_reward[2]
 
 success_reward = target_success_reward(
     distance=torch.tensor([0.1, 0.1, 0.15, 0.2]),

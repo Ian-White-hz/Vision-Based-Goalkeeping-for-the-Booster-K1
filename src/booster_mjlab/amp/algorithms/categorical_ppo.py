@@ -110,6 +110,7 @@ class CategoricalAmpPPO(PPO):
         )
         self._amp_transition = None
         self.last_amp_metrics = {}
+        self.last_ppo_diagnostics = {}
 
     def record_amp_transition(self, features, motion_ids, valid_mask) -> None:
         if self._amp_transition is not None:
@@ -154,6 +155,7 @@ class CategoricalAmpPPO(PPO):
             raise ValueError("Each PPO minibatch must contain at least two transitions")
 
         totals = dict(value=0.0, surrogate=0.0, entropy=0.0, amp=0.0)
+        diagnostics = []
         class_sums = {}
         class_updates = {}
         self.amp_model.train()
@@ -171,24 +173,24 @@ class CategoricalAmpPPO(PPO):
             values = self.critic(batch.observations)
             entropy = self.actor.output_entropy
 
+            # Measure old-policy -> current-policy KL even for fixed LR runs.
+            with torch.no_grad():
+                kl = self.actor.get_kl_divergence(
+                    batch.old_distribution_params,
+                    self.actor.output_distribution_params,
+                ).mean().item()
             if self.desired_kl is not None and self.schedule == "adaptive":
-                with torch.no_grad():
-                    kl = (
-                        self.actor.get_kl_divergence(
-                            batch.old_distribution_params,
-                            self.actor.output_distribution_params,
-                        )
-                        .mean()
-                        .item()
-                    )
-                    if kl > self.desired_kl * 2.0:
-                        self.learning_rate = max(1.0e-5, self.learning_rate / 1.5)
-                    elif 0.0 < kl < self.desired_kl / 2.0:
-                        self.learning_rate = min(1.0e-2, self.learning_rate * 1.5)
-                    for group in self.optimizer.param_groups:
-                        group["lr"] = self.learning_rate
+                if kl > self.desired_kl * 2.0:
+                    self.learning_rate = max(1.0e-5, self.learning_rate / 1.5)
+                elif 0.0 < kl < self.desired_kl / 2.0:
+                    self.learning_rate = min(1.0e-2, self.learning_rate * 1.5)
+                for group in self.optimizer.param_groups:
+                    group["lr"] = self.learning_rate
 
             ratio = torch.exp(log_prob - batch.old_actions_log_prob.squeeze(-1))
+            clip_fraction = (
+                (ratio.detach() - 1.0).abs() > self.clip_param
+            ).float().mean().item()
             advantages = batch.advantages.squeeze(-1)
             surrogate = -advantages * ratio
             clipped = -advantages * ratio.clamp(
@@ -221,8 +223,15 @@ class CategoricalAmpPPO(PPO):
                 raise FloatingPointError("Non-finite PPO + AMP loss")
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
+            def gradient_norm(module):
+                norms = [p.grad.detach().norm() for p in module.parameters()
+                         if p.grad is not None]
+                return torch.stack(norms).norm().item() if norms else 0.0
+
+            actor_norm = gradient_norm(self.actor)
+            critic_norm = gradient_norm(self.critic)
             # Source clips the combined actor-critic, not discriminator grads.
-            nn.utils.clip_grad_norm_(
+            combined_norm = nn.utils.clip_grad_norm_(
                 list(chain(self.actor.parameters(), self.critic.parameters())),
                 self.max_grad_norm,
                 error_if_nonfinite=True,
@@ -233,6 +242,17 @@ class CategoricalAmpPPO(PPO):
                     and not torch.isfinite(parameter.grad).all()
                 ):
                     raise FloatingPointError("Non-finite discriminator gradient")
+            diagnostics.append({
+                "kl": kl,
+                "clip_fraction": clip_fraction,
+                "actor_grad_norm_pre_clip": actor_norm,
+                "critic_grad_norm_pre_clip": critic_norm,
+                "combined_grad_norm_pre_clip": combined_norm.item(),
+                "grad_clip_scale": min(
+                    1.0, self.max_grad_norm / (combined_norm.item() + 1.0e-6)
+                ),
+                "learning_rate": self.learning_rate,
+            })
             self.optimizer.step()
 
             for name, value in (
@@ -260,6 +280,15 @@ class CategoricalAmpPPO(PPO):
             }
             for motion_id, values in class_sums.items()
         }
+        self.last_ppo_diagnostics = {
+            name: sum(row[name] for row in diagnostics) / len(diagnostics)
+            for name in diagnostics[0]
+        }
+        self.last_ppo_diagnostics.update(
+            kl_first=diagnostics[0]["kl"],
+            kl_max=max(row["kl"] for row in diagnostics),
+            clip_fraction_max=max(row["clip_fraction"] for row in diagnostics),
+        )
         self.storage.clear()
         return {name: value / updates for name, value in totals.items()}
 

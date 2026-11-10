@@ -72,6 +72,7 @@ def booster_k1_goalkeeper_amp_runner_cfg() -> CategoricalAmpRunnerCfg:
         algorithm=CategoricalAmpPpoAlgorithmCfg(**algorithm_params),
         amp=CategoricalAmpCfg(
             style_weight=0.4,
+            reward_mode="direct",
             hidden_layer_sizes=(512, 256),
             dataset_root="artifacts/goalkeeper_k1/serial",
             expert_sampler_factory=(

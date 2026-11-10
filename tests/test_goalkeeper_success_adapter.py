@@ -27,7 +27,10 @@ hand_positions[0, 0] = targets[0] + torch.tensor([0.0, 0.1, 0.0])
 hand_positions[1, 1] = targets[1] + torch.tensor([0.0, 0.2, 0.0])
 
 scene = FakeScene(
-    robot=NS(data=NS(site_pos_w=hand_positions)),
+    robot=NS(data=NS(
+        site_pos_w=hand_positions,
+        body_link_pos_w=torch.full((2, 3, 3), 10.0),
+    )),
     ball=NS(
         data=NS(
             root_link_pos_w=torch.tensor([
@@ -58,12 +61,12 @@ env = NS(
     ),
 )
 
-hand_cfg = SceneEntityCfg("robot", site_ids=[0, 1])
+blocker_cfg = SceneEntityCfg("robot", site_ids=[0, 1], body_ids=[0, 1, 2])
 
 # 顺序一：success → stopball。
 reset_shot_outcome_state(env, None)
 
-success_first = target_success_from_env(env, hand_cfg).clone()
+success_first = target_success_from_env(env, blocker_cfg).clone()
 stop_after = stopball_from_env(env).clone()
 
 torch.testing.assert_close(success_first, torch.tensor([1.0, 0.0]))
@@ -73,7 +76,7 @@ torch.testing.assert_close(stop_after, torch.tensor([1.0, 0.0]))
 reset_shot_outcome_state(env, None)
 
 stop_first = stopball_from_env(env).clone()
-success_after = target_success_from_env(env, hand_cfg).clone()
+success_after = target_success_from_env(env, blocker_cfg).clone()
 
 torch.testing.assert_close(stop_first, stop_after)
 torch.testing.assert_close(success_after, success_first)
@@ -82,7 +85,7 @@ torch.testing.assert_close(success_after, success_first)
 env.common_step_counter += 1
 
 torch.testing.assert_close(
-    target_success_from_env(env, hand_cfg),
+    target_success_from_env(env, blocker_cfg),
     torch.tensor([2.0, 0.0]),
 )
 torch.testing.assert_close(

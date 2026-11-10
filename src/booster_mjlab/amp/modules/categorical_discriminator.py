@@ -16,10 +16,14 @@ class CategoricalAmpDiscriminator(nn.Module):
         empirical_normalization: bool = True,
         hidden_layer_sizes: tuple[int, ...] = (512, 256),
         logit_init_scale: float = 1.0,
+        reward_mode: str = "source_noise",
     ):
         super().__init__()
 
         self.device = torch.device(device)
+        if reward_mode not in ("source_noise", "direct"):
+            raise ValueError("reward_mode must be 'source_noise' or 'direct'")
+        self.reward_mode = reward_mode
         if not hidden_layer_sizes or any(size <= 0 for size in hidden_layer_sizes):
             raise ValueError("hidden_layer_sizes must contain positive widths")
         if not 0.0 < logit_init_scale < float("inf"):
@@ -48,6 +52,14 @@ class CategoricalAmpDiscriminator(nn.Module):
             nn.init.zeros_(layer.bias)
         self.discriminators = nn.ModuleList([deepcopy(prototype) for _ in range(6)])
 
+    @property
+    def reward_version(self) -> str:
+        """Checkpoint identity; unchanged source mode accepts old checkpoints."""
+        return {
+            "source_noise": "least_squares_noise20_sigma0.3",
+            "direct": "least_squares_direct_v1",
+        }[self.reward_mode]
+
     def normalize(self, features: torch.Tensor) -> torch.Tensor:
         """Use the shared normalizer without updating its statistics."""
         if self.amp_normalizer is None:
@@ -66,6 +78,7 @@ class CategoricalAmpDiscriminator(nn.Module):
         features: torch.Tensor,
         motion_ids: torch.Tensor,
     ) -> torch.Tensor:
+        """Return discriminator scores, independent of the reward mode."""
         self._validate_inputs(features, motion_ids)
 
         features = self.normalize(features)
@@ -85,6 +98,7 @@ class CategoricalAmpDiscriminator(nn.Module):
         features: torch.Tensor,
         motion_ids: torch.Tensor,
     ) -> torch.Tensor:
+        """Compute style reward; direct mode never samples synthetic candidates."""
         self._validate_inputs(features, motion_ids)
 
         features = self.normalize(features)
@@ -94,7 +108,15 @@ class CategoricalAmpDiscriminator(nn.Module):
         for motion_id, discriminator in enumerate(self.discriminators):
             mask = motion_ids == motion_id
             if mask.any().item():
-                rewards[mask] = discriminator.predict_reward(features[mask])
+                if self.reward_mode == "direct":
+                    # Features were normalized once above; sub-Ds have no
+                    # normalizer. Evaluate only the actual detached trajectory.
+                    scores = discriminator(features[mask]).squeeze(-1)
+                    rewards[mask] = (1.0 - 0.25 * (scores - 1.0).square()).clamp_min(
+                        0.0
+                    )
+                else:
+                    rewards[mask] = discriminator.predict_reward(features[mask])
 
         return rewards
 

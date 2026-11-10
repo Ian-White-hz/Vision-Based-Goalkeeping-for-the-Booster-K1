@@ -37,6 +37,7 @@ assert "amp" not in cfg.obs_groups["critic"]
 
 assert cfg.experiment_name == "k1_goalkeeper_amp"
 assert cfg.amp.style_weight == 0.4
+assert cfg.amp.reward_mode == "direct"
 assert cfg.amp.hidden_layer_sizes == (512, 256)
 assert cfg.amp.expert_sampler_factory.endswith(":create_goalkeeper_expert_sampler")
 assert cfg.amp.motion_id_reader.endswith(":get_amp_motion_ids")

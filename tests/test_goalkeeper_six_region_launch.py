@@ -18,6 +18,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
 
 
 settings = FullGoalSettings()
+assert settings.speed_range == (1.0, 1.5)
 assert settings.rolling_probability_by_region == (0., 0., 0., 0., 1., 1.)
 
 try:
@@ -181,7 +182,7 @@ try:
 
     success_cfg = env.reward_manager.get_term_cfg("success")
 
-    assert tuple(reach_cfg.params["hand_cfg"].site_names) == ("left_hand", "right_hand")
+    assert tuple(reach_cfg.params["blocker_cfg"].site_names) == ("left_hand", "right_hand")
 
     action = torch.zeros(
         (env.num_envs, env.action_manager.total_action_dim),
@@ -196,7 +197,8 @@ try:
 
         assert raw_reach.shape == (env.num_envs,)
         assert torch.isfinite(raw_reach).all()
-        assert (raw_reach >= 0.0).all()
+        # Signed progress can penalize motion away from the intercept target.
+        assert (raw_reach >= -3.0).all() and (raw_reach <= 3.731059).all()
         assert torch.isfinite(total_reward).all()
 
         if terminated.any().item() or truncated.any().item():
@@ -220,7 +222,12 @@ try:
         for key, value in reset_extras["log"].items()
         if key.startswith("Episode_Metrics/Goalkeeper/")
     }
-    assert len(metric_logs) == 24
+    suffixes = {
+        "coverage", "contact", "velocity_change", "save", "goal",
+        "miss", "unresolved", "fall",
+    }
+    assert len(metric_logs) == 6 * len(suffixes)
+    assert {key.rsplit("/", 1)[1] for key in metric_logs} == suffixes
     coverage = [
         metric_logs[f"Episode_Metrics/Goalkeeper/{name}/coverage"]
         for name in (
@@ -233,7 +240,7 @@ try:
         )
     ]
     torch.testing.assert_close(torch.stack(coverage).sum(), torch.tensor(1.0))
-    print("六类 coverage/save/goal/fall episode metrics reset 日志检查通过")
+    print("六类触球/速度代理/最终结果等 48 项 episode metrics reset 日志检查通过")
 
 finally:
     env.close()
