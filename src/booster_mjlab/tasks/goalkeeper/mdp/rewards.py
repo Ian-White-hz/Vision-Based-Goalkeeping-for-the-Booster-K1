@@ -9,7 +9,8 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_apply_inverse
 
 from .outcomes import update_goalkeeper_outcome_state
-from .interception import lateral_velocity_tracking_reward, interception_features
+from .interception import body_lateral_progress, interception_features
+from .foot_coverage import rolling_coverage_from_env
 from .shot_state import (
     get_recovery_mask,
     stopball_transition as stopball_transition,  # Public compatibility export.
@@ -895,22 +896,46 @@ def ee_reach_from_env(
 
 def body_intercept_from_env(
     env: ManagerBasedRlEnv, blocker_cfg: SceneEntityCfg, ball_name: str = "ball",
+    foot_cfg: SceneEntityCfg | None = None,
     guidance: dict | None = None, lateral_reach: float = .3,
     movement_weight: float = 2., fade_distance: float = .3,
-    reach_threshold: float = .05, position_gain: float = 1.,
-    max_speed: float = .3, velocity_std: float = .2,
+    reach_threshold: float = .05, speed_limit: float = 1.,
+    ball_radius: float = .11, prediction_horizon: float = 2.5,
+    path_half_length: float = .2, rolling_gap_fade: float = .1,
+    rolling_direction_fade: float = .05,
 ) -> torch.Tensor:
-    """Active-shot lateral tracking relative to standing; coverage commands a stop."""
+    """Directional root progress: hand coverage for air, foot path coverage for rolling.
+
+    No zero-command braking. Geometry only gates guidance; it never marks saves.
+    """
+    if foot_cfg is None:
+        raise ValueError("Directional interception requires explicit foot collision geoms")
+    for name, value in (("rolling_gap_fade", rolling_gap_fade),
+                        ("rolling_direction_fade", rolling_direction_fade)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
     f = interception_features(env, blocker_cfg, ball_name=ball_name, guidance=guidance,
                               reach_threshold=reach_threshold)
     robot = env.scene[blocker_cfg.name]
-    reward = lateral_velocity_tracking_reward(
-        f["target"][:, 1], robot.data.root_link_pos_w[:, 1] - env.scene.env_origins[:, 1],
-        robot.data.root_link_lin_vel_w[:, 1], f["distance"], lateral_reach=lateral_reach,
+    root_y = robot.data.root_link_pos_w[:, 1] - env.scene.env_origins[:, 1]
+    vy = robot.data.root_link_lin_vel_w[:, 1]
+    hands = robot.data.site_pos_w[:, blocker_cfg.site_ids] - env.scene.env_origins[:, None]
+    hand_distance = (hands - f["target"][:, None]).norm(dim=-1).amin(-1)
+    air = body_lateral_progress(
+        f["target"][:, 1], root_y, vy, hand_distance, lateral_reach=lateral_reach,
         movement_weight=movement_weight, fade_distance=fade_distance,
-        reach_threshold=reach_threshold, position_gain=position_gain,
-        max_speed=max_speed, velocity_std=velocity_std,
+        reach_threshold=reach_threshold, speed_limit=speed_limit,
     )
+    gap = rolling_coverage_from_env(
+        env, foot_cfg, ball_name, ball_radius=ball_radius,
+        prediction_horizon=prediction_horizon, path_half_length=path_half_length,
+    )
+    # No 30cm dead corridor for rolling balls. Smooth direction through zero;
+    # a ball exactly between the feet does not arbitrarily choose a stepping side.
+    direction = ((f["target"][:, 1] - root_y) / rolling_direction_fade).clamp(-1, 1)
+    rolling = movement_weight * (gap / rolling_gap_fade).clamp(0, 1)
+    rolling = rolling * (direction * vy).clamp(-speed_limit, speed_limit)
+    reward = torch.where(env._full_goal_shots["is_rolling"], rolling, air)
     return torch.where(f["active"], reward * f["upright"], 0.)
 
 def stopball_from_env(

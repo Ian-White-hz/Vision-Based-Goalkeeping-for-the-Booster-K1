@@ -36,6 +36,7 @@ from booster_mjlab.tasks.goalkeeper.scene.events import sample_six_region_shots
 from booster_mjlab.tasks.goalkeeper.scene.settings import FullGoalSettings
 from booster_mjlab.tasks.goalkeeper.mdp.rewards import intercept_movement_reward
 from booster_mjlab.tasks.goalkeeper.mdp.interception import interception_features, lateral_velocity_command
+from booster_mjlab.tasks.goalkeeper.mdp.foot_coverage import rolling_coverage_from_env
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     get_blocker_target_kinematics, nearest_intercept_kinematics,
 )
@@ -136,6 +137,7 @@ def install_reach_probe(env):
         distance, closing_speed = get_blocker_target_kinematics(current_env, asset)
         time_weight, settling, tau, body = 1., 1., 0., 0.
         body_command, body_tracking_error = 0., 0.
+        foot_gap, coverage_kind = 0., "legacy"
         if "guidance" in params:
             f = interception_features(current_env, asset, guidance=params["guidance"])
             target, distance, active = f["target"], f["distance"], f["active"]
@@ -146,6 +148,16 @@ def install_reach_probe(env):
             movement = torch.zeros_like(distance)
             body_cfg = current_env.reward_manager.get_term_cfg("body_intercept")
             body = float(body_cfg.func(current_env, **body_cfg.params).item())
+            if "foot_cfg" in body_cfg.params:
+                gap = rolling_coverage_from_env(
+                    current_env, body_cfg.params["foot_cfg"], "ball",
+                    **{k: body_cfg.params[k] for k in (
+                        "ball_radius", "prediction_horizon", "path_half_length",
+                    )},
+                )
+                # Finite sentinel for unavailable future path, for CSV consumers.
+                foot_gap = float(gap.nan_to_num(posinf=1e6).item())
+                coverage_kind = "foot_path" if current_env._full_goal_shots["is_rolling"].item() else "hands"
             if "position_gain" in body_cfg.params:
                 cmd = lateral_velocity_command(
                     target[:, 1],
@@ -179,6 +191,8 @@ def install_reach_probe(env):
             "body_movement_raw": body,
             "body_velocity_command_y": body_command,
             "body_velocity_tracking_error": body_tracking_error,
+            "body_coverage_kind": coverage_kind,
+            "rolling_foot_surface_gap": foot_gap,
             "reach_time_to_plane": tau,
             "reach_time_weight": time_weight,
             "reach_settling": settling,
