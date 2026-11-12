@@ -35,7 +35,7 @@ from booster_mjlab.tasks.goalkeeper.config.k1.rl_cfg import (
 from booster_mjlab.tasks.goalkeeper.scene.events import sample_six_region_shots
 from booster_mjlab.tasks.goalkeeper.scene.settings import FullGoalSettings
 from booster_mjlab.tasks.goalkeeper.mdp.rewards import intercept_movement_reward
-from booster_mjlab.tasks.goalkeeper.mdp.interception import interception_features
+from booster_mjlab.tasks.goalkeeper.mdp.interception import interception_features, lateral_velocity_command
 from booster_mjlab.tasks.goalkeeper.mdp.shot_state import (
     get_blocker_target_kinematics, nearest_intercept_kinematics,
 )
@@ -135,6 +135,7 @@ def install_reach_probe(env):
         )
         distance, closing_speed = get_blocker_target_kinematics(current_env, asset)
         time_weight, settling, tau, body = 1., 1., 0., 0.
+        body_command, body_tracking_error = 0., 0.
         if "guidance" in params:
             f = interception_features(current_env, asset, guidance=params["guidance"])
             target, distance, active = f["target"], f["distance"], f["active"]
@@ -145,6 +146,17 @@ def install_reach_probe(env):
             movement = torch.zeros_like(distance)
             body_cfg = current_env.reward_manager.get_term_cfg("body_intercept")
             body = float(body_cfg.func(current_env, **body_cfg.params).item())
+            if "position_gain" in body_cfg.params:
+                cmd = lateral_velocity_command(
+                    target[:, 1],
+                    robot.data.root_link_pos_w[:, 1] - origin[:, 1], distance,
+                    **{k: body_cfg.params[k] for k in (
+                        "lateral_reach", "position_gain", "max_speed",
+                        "fade_distance", "reach_threshold",
+                    )},
+                )
+                body_command = float(cmd.item())
+                body_tracking_error = float((robot.data.root_link_lin_vel_w[:, 1] - cmd).item())
         else:
             movement = intercept_movement_reward(
                 distance, closing_speed,
@@ -165,6 +177,8 @@ def install_reach_probe(env):
             "reach_closing_speed": float(closing_speed.item()),
             "reach_movement_raw": float(movement.item()),
             "body_movement_raw": body,
+            "body_velocity_command_y": body_command,
+            "body_velocity_tracking_error": body_tracking_error,
             "reach_time_to_plane": tau,
             "reach_time_weight": time_weight,
             "reach_settling": settling,

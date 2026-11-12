@@ -40,7 +40,7 @@ try:
     # Brief initial clearance keeps ground friction from erasing the imposed
     # velocity before the first reward sample; dynamics remain fully enabled.
     root[:, 2] += .05
-    root[:, 8] = 2.
+    root[:, 8] = .3  # Track the capped command, rather than overspeed it.
     robot.write_root_state_to_sim(root)
     env.sim.forward()
     env.scene.update(dt=0.)

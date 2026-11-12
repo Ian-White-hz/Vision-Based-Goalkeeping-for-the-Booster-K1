@@ -9,7 +9,7 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.utils.lab_api.math import quat_apply_inverse
 
 from .outcomes import update_goalkeeper_outcome_state
-from .interception import body_lateral_progress, interception_features
+from .interception import lateral_velocity_tracking_reward, interception_features
 from .shot_state import (
     get_recovery_mask,
     stopball_transition as stopball_transition,  # Public compatibility export.
@@ -896,18 +896,20 @@ def ee_reach_from_env(
 def body_intercept_from_env(
     env: ManagerBasedRlEnv, blocker_cfg: SceneEntityCfg, ball_name: str = "ball",
     guidance: dict | None = None, lateral_reach: float = .3,
-    movement_weight: float = .5, fade_distance: float = .3,
-    speed_limit: float = 1., reach_threshold: float = .05,
+    movement_weight: float = 2., fade_distance: float = .3,
+    reach_threshold: float = .05, position_gain: float = 1.,
+    max_speed: float = .3, velocity_std: float = .2,
 ) -> torch.Tensor:
-    """Independent, bounded root lateral progress, never a hand-speed reward."""
+    """Active-shot lateral tracking relative to standing; coverage commands a stop."""
     f = interception_features(env, blocker_cfg, ball_name=ball_name, guidance=guidance,
                               reach_threshold=reach_threshold)
     robot = env.scene[blocker_cfg.name]
-    reward = body_lateral_progress(
+    reward = lateral_velocity_tracking_reward(
         f["target"][:, 1], robot.data.root_link_pos_w[:, 1] - env.scene.env_origins[:, 1],
         robot.data.root_link_lin_vel_w[:, 1], f["distance"], lateral_reach=lateral_reach,
         movement_weight=movement_weight, fade_distance=fade_distance,
-        speed_limit=speed_limit, reach_threshold=reach_threshold,
+        reach_threshold=reach_threshold, position_gain=position_gain,
+        max_speed=max_speed, velocity_std=velocity_std,
     )
     return torch.where(f["active"], reward * f["upright"], 0.)
 

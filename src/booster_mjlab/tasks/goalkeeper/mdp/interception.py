@@ -103,6 +103,50 @@ def body_lateral_progress(target_y, root_y, root_vy, blocker_distance, *,
     return movement_weight * body_gate * blocker_gate * speed
 
 
+def lateral_velocity_command(target_y, root_y, blocker_distance, *,
+                             lateral_reach=.3, position_gain=1., max_speed=.3,
+                             fade_distance=.3, reach_threshold=.05):
+    """Field-frame command; blocker coverage slows the command, not the reward."""
+    for name, value in (("lateral_reach", lateral_reach), ("reach_threshold", reach_threshold)):
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be finite and nonnegative")
+    for name, value in (("position_gain", position_gain), ("max_speed", max_speed),
+                        ("fade_distance", fade_distance)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
+    if target_y.ndim != 1 or root_y.shape != target_y.shape or blocker_distance.shape != target_y.shape:
+        raise ValueError("Expected matching (B,) lateral positions and blocker distance")
+    error = target_y - root_y
+    remaining = error.sign() * (error.abs() - lateral_reach).clamp_min(0)
+    command = (position_gain * remaining).clamp(-max_speed, max_speed)
+    coverage_gate = ((blocker_distance - reach_threshold) / fade_distance).clamp(0, 1)
+    return command * coverage_gate
+
+
+def lateral_velocity_tracking_reward(target_y, root_y, root_vy, blocker_distance, *,
+                                     movement_weight=2., velocity_std=.2, **command_params):
+    """Tracking improvement over standing, bounded by +/- movement_weight.
+
+    No dt scaling here. Invalid rows return zero, not a stopping penalty.
+    Zero command retains braking feedback; zero actual velocity earns zero.
+    """
+    if not math.isfinite(velocity_std) or velocity_std <= 0:
+        raise ValueError("velocity_std must be finite and positive")
+    if not math.isfinite(movement_weight) or movement_weight < 0:
+        raise ValueError("movement_weight must be finite and nonnegative")
+    if root_vy.shape != target_y.shape:
+        raise ValueError("Expected matching (B,) root velocity")
+    valid = (torch.isfinite(target_y) & torch.isfinite(root_y)
+             & torch.isfinite(root_vy) & torch.isfinite(blocker_distance)
+             & (blocker_distance >= 0))
+    command = lateral_velocity_command(target_y, root_y, blocker_distance, **command_params)
+    command = torch.where(valid, command, 0.)
+    speed = torch.where(valid, root_vy, 0.)
+    tracking = torch.exp(-((speed - command) / velocity_std).square())
+    standing = torch.exp(-(command / velocity_std).square())
+    return torch.where(valid, movement_weight * (tracking - standing), 0.)
+
+
 def interception_features(env, blocker_cfg, *, ball_name="ball", guidance=None, reach_threshold=.2):
     cfg = InterceptionCfg(**(guidance or {}))
     robot, ball = env.scene[blocker_cfg.name], env.scene[ball_name]

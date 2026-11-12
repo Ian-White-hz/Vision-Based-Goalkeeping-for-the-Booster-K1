@@ -266,8 +266,9 @@ def booster_k1_goalkeeper_env_cfg(
     cfg.rewards["body_intercept"] = RewardTermCfg(
         func=body_intercept_from_env, weight=10.,
         params={"blocker_cfg": deepcopy(blocker_cfg), "guidance": deepcopy(guidance),
-                "lateral_reach": .3, "movement_weight": .5, "fade_distance": .3,
-                "speed_limit": 1., "reach_threshold": .05},
+                "lateral_reach": .3, "movement_weight": 2.0, "fade_distance": .3,
+                "reach_threshold": .05, "position_gain": 1.,
+                "max_speed": .3, "velocity_std": .2},
     )
     cfg.rewards["stopball"] = RewardTermCfg(
         func=stopball_from_env,
