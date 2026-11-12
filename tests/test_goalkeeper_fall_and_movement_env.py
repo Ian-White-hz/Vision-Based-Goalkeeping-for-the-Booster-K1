@@ -27,7 +27,7 @@ try:
     assert body.params["lateral_reach"] == .3 and body.params["fade_distance"] == .3
     assert reach.params["reach_threshold"] == .2
     assert success.params["strict_threshold"] == .15
-    assert body.weight == reach.weight == 10. and success.weight == 5. and fall.weight == -20.
+    assert body.weight == reach.weight == 10. and success.weight == 5. and fall.weight == -5.
 
     robot = env.scene["robot"]
     root = torch.cat((robot.data.root_link_pose_w, robot.data.root_link_vel_w), dim=-1).clone()
@@ -56,14 +56,14 @@ try:
     assert truncated.tolist() == [False, True, False], truncated
     index = manager.active_terms.index("fall")
     contribution = manager._step_reward[:, index] * env.step_dt
-    torch.testing.assert_close(contribution, torch.tensor([-20., 0., 0.]))
+    torch.testing.assert_close(contribution, torch.tensor([-5., 0., 0.]))
     total, _, _ = mix_amp_rewards(task, torch.zeros(3), style_weight=.4,
                                  step_dt=env.step_dt, scale_rewards_by_dt=True)
     without, _, _ = mix_amp_rewards(task - contribution, torch.zeros(3), style_weight=.4,
                                    step_dt=env.step_dt, scale_rewards_by_dt=True)
-    torch.testing.assert_close(total - without, torch.tensor([-12., 0., 0.]), atol=1e-6, rtol=1e-5)
+    torch.testing.assert_close(total - without, torch.tensor([-3., 0., 0.]), atol=1e-6, rtol=1e-5)
     logged = extras["log"]["Episode_Reward/fall"]
-    torch.testing.assert_close(logged, torch.tensor(-20. / 3 / cfg.episode_length_s))
+    torch.testing.assert_close(logged, torch.tensor(-5. / 3 / cfg.episode_length_s))
     # Cached termination flags remain terminal after auto-reset in mjlab.
     # The reward must nevertheless read the reset pose and return zero.
     assert env.termination_manager.get_term("excessive_body_tilt")[0]
@@ -71,7 +71,7 @@ try:
     _, _, terminated, truncated, _ = env.step(action)
     assert not terminated.any() and not truncated.any()
     assert not manager._step_reward[:, index].any()
-    print("Real K1: fall/timeout/recovery task contributions [-20,0,0], mixed [-12,0,0]")
+    print("Real K1: fall/timeout/recovery task contributions [-5,0,0], mixed [-3,0,0]")
     print("Terminal episode log, auto-reset without stale cost, no next-step repeat; only body cutoff=5cm")
 finally:
     env.close()

@@ -61,7 +61,7 @@ try:
     torch.testing.assert_close(raw, torch.tensor([50.0, 0.0]))
     goal_term = env.reward_manager.get_term_cfg("goal_conceded")
     task_penalty = raw * goal_term.weight * env.step_dt
-    torch.testing.assert_close(task_penalty, torch.tensor([-20.0, 0.0]))
+    torch.testing.assert_close(task_penalty, torch.tensor([-2.0, 0.0]))
     index = env.reward_manager.active_terms.index("goal_conceded")
     actual = env.reward_manager._step_reward[:, index] * env.step_dt
     torch.testing.assert_close(actual, task_penalty)
@@ -79,7 +79,7 @@ try:
         step_dt=env.step_dt,
         scale_rewards_by_dt=True,
     )
-    torch.testing.assert_close(total - without_goal, torch.tensor([-12.0, 0.0]))
+    torch.testing.assert_close(total - without_goal, torch.tensor([-1.2, 0.0]))
 
     # A second read cannot consume the event; later steps must not repeat it.
     torch.testing.assert_close(goal_conceded_cost(env), raw)
@@ -101,7 +101,7 @@ try:
     assert outcome.goal_conceded_step[0].item() == -1
     assert outcome.safe_stop_steps[0].item() == 0
     assert not goal_conceded_cost(env).any()
-    print("真实双环境：先停球代理后失球，goal=-20 / mixed=-12，仅惩罚一次")
+    print("真实双环境：先停球代理后失球，goal=-2 / mixed=-1.2，仅惩罚一次")
     print("最终 save=0、velocity_change=1、goal=1，自动局部 reset 和日志检查通过")
 finally:
     env.close()

@@ -13,6 +13,7 @@ from booster_mjlab.tasks.goalkeeper.scene.settings import FullGoalSettings
 
 
 settings = FullGoalSettings()
+assert settings.fall_penalty == 5.0
 tilts = torch.deg2rad(torch.tensor([0., 55., 65., -65.]))
 robot = NS(data=NS(projected_gravity_b=torch.stack(
     (tilts.sin(), torch.zeros_like(tilts), -tilts.cos()), dim=-1,
@@ -67,5 +68,5 @@ torch.testing.assert_close(body_lateral_progress(-target, -root, -speed, d), new
 torch.testing.assert_close(body_lateral_progress(target, root, -speed, d), -new)
 # The separate 30 cm lateral corridor is unchanged.
 assert not body_lateral_progress(torch.full_like(d, .3), root, speed, d).any()
-print("Fall task/mixed: -20/-12, tilt-only, repeated reads, dt on/off and configured angle passed")
+print("Fall task/mixed: -5/-3, tilt-only, repeated reads, dt on/off and configured angle passed")
 print("5 cm movement cutoff:", new.tolist(), "old:", old.tolist())

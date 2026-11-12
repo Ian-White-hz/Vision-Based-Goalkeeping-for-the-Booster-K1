@@ -49,6 +49,41 @@ def fall_termination_cost(env: ManagerBasedRlEnv) -> torch.Tensor:
     return fallen.float() / scale
 
 
+def body_tilt_cost(
+    projected_gravity_b: torch.Tensor,
+    *,
+    deadband_deg: float = 20.0,
+    full_penalty_deg: float = 60.0,
+) -> torch.Tensor:
+    """Bounded squared trunk tilt beyond a deadband; unit gravity input (B, 3)."""
+    if projected_gravity_b.ndim != 2 or projected_gravity_b.shape[-1] != 3:
+        raise ValueError("Expected projected gravity shape (B, 3)")
+    if not (
+        math.isfinite(deadband_deg)
+        and math.isfinite(full_penalty_deg)
+        and 0.0 <= deadband_deg < full_penalty_deg <= 180.0
+    ):
+        raise ValueError("Require 0 <= deadband < full penalty <= 180 degrees")
+
+    tilt = torch.acos((-projected_gravity_b[:, 2]).clamp(-1.0, 1.0))
+    lower, upper = math.radians(deadband_deg), math.radians(full_penalty_deg)
+    return ((tilt - lower) / (upper - lower)).clamp(0.0, 1.0).square()
+
+
+def body_tilt_from_env(
+    env: ManagerBasedRlEnv,
+    robot_name: str = "robot",
+    deadband_deg: float = 20.0,
+    full_penalty_deg: float = 60.0,
+) -> torch.Tensor:
+    """Continuous whole-episode tilt cost; RewardManager applies dt scaling."""
+    return body_tilt_cost(
+        env.scene[robot_name].data.projected_gravity_b,
+        deadband_deg=deadband_deg,
+        full_penalty_deg=full_penalty_deg,
+    )
+
+
 def heading_deviation_cost(
     quaternion_w: torch.Tensor,
     reference_quaternion_w: torch.Tensor,

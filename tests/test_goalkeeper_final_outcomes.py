@@ -164,7 +164,7 @@ for dt in (0.01, 0.02, 0.04):
         env.scene["ball"].data.root_link_pos_w[0, 0] = -1.0
         raw = goal_conceded_cost(env)
         task = -penalty * raw * (dt if scaled else 1.0)
-        torch.testing.assert_close(task, torch.tensor([-20.0]))
+        torch.testing.assert_close(task, torch.tensor([-2.0]))
         total, mixed_task, style = mix_amp_rewards(
             task,
             torch.zeros(1),
@@ -172,7 +172,7 @@ for dt in (0.01, 0.02, 0.04):
             step_dt=dt,
             scale_rewards_by_dt=scaled,
         )
-        torch.testing.assert_close(total, torch.tensor([-12.0]))
+        torch.testing.assert_close(total, torch.tensor([-1.2]))
         torch.testing.assert_close(mixed_task, total)
         assert not style.any()
         env.common_step_counter += 1
@@ -184,4 +184,4 @@ except ValueError:
     pass
 else:
     raise AssertionError("Goal penalty must be positive")
-print("一次性失球任务贡献 -20、AMP 混合贡献 -12，跨 dt/缩放模式检查通过")
+print("一次性失球任务贡献 -2、AMP 混合贡献 -1.2，跨 dt/缩放模式检查通过")

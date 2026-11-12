@@ -44,6 +44,7 @@ from booster_mjlab.tasks.goalkeeper.mdp.rewards import (
     target_success_from_env,
     goal_conceded_cost,
     fall_termination_cost,
+    body_tilt_from_env,
     heading_deviation_from_env,
     excessive_yaw_rate_from_env,
 )
@@ -279,6 +280,15 @@ def booster_k1_goalkeeper_env_cfg(
     cfg.rewards["fall"] = RewardTermCfg(
         func=fall_termination_cost,
         weight=-settings.fall_penalty,
+    )
+    cfg.rewards["body_tilt"] = RewardTermCfg(
+        func=body_tilt_from_env,
+        weight=-5.0,
+        params={
+            "robot_name": "robot",
+            "deadband_deg": 20.0,
+            "full_penalty_deg": 60.0,
+        },
     )
     cfg.rewards["heading_deviation"] = RewardTermCfg(
         func=heading_deviation_from_env,

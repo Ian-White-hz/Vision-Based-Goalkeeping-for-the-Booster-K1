@@ -26,8 +26,8 @@ class FullGoalSettings:
     stop_speed: float = 0.12
     stop_hold_s: float = 0.4
     stop_distance: float = 0.75
-    goal_penalty: float = 20.0
-    fall_penalty: float = 20.0
+    goal_penalty: float = 2.0
+    fall_penalty: float = 5.0
     heading_penalty: float = 5.0
     yaw_rate_penalty: float = 1.0
     heading_deadband_deg: float = 20.0
