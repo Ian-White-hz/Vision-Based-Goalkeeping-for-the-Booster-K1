@@ -122,10 +122,13 @@ def perturb(env, env_ids=None):
         return
     ball = env.scene["ball"]
     v = ball.data.root_link_lin_vel_w
-    force = -0.5 * 1.225 * 0.47 * torch.pi * 0.1**2 * v.norm(dim=-1, keepdim=True) * v
-    force += torch.empty_like(force).uniform_(-0.5, 0.5)
+    force = torch.zeros_like(v)
+    if s.settings.ball_drag:
+        force = -0.5 * 1.225 * 0.47 * torch.pi * 0.1**2 * v.norm(dim=-1, keepdim=True) * v
+    if s.settings.ball_force_noise:
+        force += torch.empty_like(force).uniform_(-0.5, 0.5)
     ball.write_external_wrench_to_sim(force[:, None], torch.zeros_like(force[:, None]))
-    if env.common_step_counter % 25 == 0:
+    if s.settings.ball_velocity_noise and env.common_step_counter % 25 == 0:
         root = torch.cat(
             (ball.data.root_link_pose_w, ball.data.root_link_vel_w), -1
         ).clone()

@@ -9,12 +9,13 @@ from mjlab.envs.mdp import dr
 
 
 def ball_spec():
-    # Explicit source URDF mass/inertia. Do not inherit regulation-football mass.
+    # Keep source mass/radius; thin-shell inertia and calibrated contact replace
+    # the source URDF inertia and engine-dependent default contact response.
     return mujoco.MjSpec.from_string("""<mujoco><worldbody>
       <body name="football"><freejoint/>
-        <inertial pos="0 0 0" mass="0.1" diaginertia=".01 .01 .01"/>
+        <inertial pos="0 0 0" mass="0.1" diaginertia=".000667 .000667 .000667"/>
         <geom name="football_geom" type="sphere" size=".1" rgba=".95 .95 .95 1"
-              friction="1 .005 .0001" condim="3"/>
+              friction=".5 .005 .0001" condim="6" priority="1" solref=".04 .5"/>
       </body></worldbody></mujoco>""")
 
 

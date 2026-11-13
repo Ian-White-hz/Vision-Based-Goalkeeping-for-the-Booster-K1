@@ -65,3 +65,8 @@ REWARD_SCALES = dict(
 class SourceSettings:
     play: bool = False
     randomize: bool = True
+
+    # Ball perturbations are opt-in; robot randomization remains independent.
+    ball_drag: bool = False
+    ball_force_noise: bool = False
+    ball_velocity_noise: bool = False

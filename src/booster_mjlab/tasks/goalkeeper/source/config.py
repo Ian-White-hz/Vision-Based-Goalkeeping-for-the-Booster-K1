@@ -61,8 +61,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
         ),
         num_envs=num_envs,
     )
-    # Source has a ground plane and ball, no physical goal structure.
-    scene.entities.pop("goal")
+    # Visual goal only: all goal geoms have collision masks set to zero.
     scene.env_spacing = 5.0
     scene.entities["ball"] = ball_cfg()
     scene.sensors = (
