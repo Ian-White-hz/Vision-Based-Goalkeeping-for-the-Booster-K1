@@ -18,7 +18,7 @@ from booster_mjlab.tasks.goalkeeper.config.k1.rl_cfg import (
     booster_k1_goalkeeper_ppo_runner_cfg,
 )
 from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg
-from .settings import SourceSettings, REWARD_SCALES
+from .settings import SourceSettings, REWARD_SCALES, GOAL_WIDTH, GOAL_HEIGHT, GOAL_X
 from .state import observation, reward, termination
 from .events import reset, perturb
 from .actions import SourceActionCfg, SourceMotorCfg
@@ -57,7 +57,11 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
     scene = make_goalkeeper_scene_cfg(
         robot,
         settings=FullGoalSettings(
-            ball_radius=0.1, ball_mass=0.1, goal_height=1.8, goal_width=3.6
+            ball_radius=0.1,
+            ball_mass=0.1,
+            goal_height=GOAL_HEIGHT,
+            goal_width=GOAL_WIDTH,
+            goal_x=GOAL_X,
         ),
         num_envs=num_envs,
     )

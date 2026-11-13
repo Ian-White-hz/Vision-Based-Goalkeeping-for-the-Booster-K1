@@ -3,6 +3,7 @@
 import random
 import torch
 from .state import state
+from .settings import GOAL_X
 
 
 def reset(env, env_ids=None):
@@ -139,11 +140,11 @@ def sample_region_shots(bounds):
     def rand():
         return torch.rand(n, device=bounds.device)
 
-    start = torch.stack((3 + 2 * rand(), -1.0 + 2 * rand(), 0.2 + 0.8 * rand()), -1)
+    start = torch.stack((3 + 2 * rand(), -1.0 + 2 * rand(), 0.2 + 0.6 * rand()), -1)
     margin = 0.04
     target = torch.stack(
         (
-            torch.full_like(rand(), -0.8),
+            torch.full_like(rand(), GOAL_X),
             bounds[:, 0] + margin + rand() * (bounds[:, 1] - bounds[:, 0] - 2 * margin),
             bounds[:, 2] + margin + rand() * (bounds[:, 3] - bounds[:, 2] - 2 * margin),
         ),

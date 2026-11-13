@@ -10,16 +10,18 @@ MOTION_NAMES = (
     "leftstep",
     "rightstep",
 )
-# width min/max, height min/max, in the source order.
-# K1 baseline: ball-centre bounds at goal x=-0.8. High regions remain
-# challenging; these bounds are not a claim that every shot is reachable.
+# Compact K1 training goal; dimensions are a task choice, not a measured
+# dynamic reach guarantee. Ball-centre bounds leave radius clearance.
+GOAL_WIDTH = 1.5
+GOAL_HEIGHT = 1.1
+GOAL_X = -0.8
 REGIONS = (
-    (0.1, 0.6, 0.4, 0.75),
-    (-0.6, -0.1, 0.4, 0.75),
-    (0.1, 0.6, 0.75, 1.05),
-    (-0.6, -0.1, 0.75, 1.05),
-    (0.1, 0.6, 0.12, 0.3),
-    (-0.6, -0.1, 0.12, 0.3),
+    (0.05, 0.55, 0.3, 0.65),
+    (-0.55, -0.05, 0.3, 0.65),
+    (0.05, 0.55, 0.65, 0.9),
+    (-0.55, -0.05, 0.65, 0.9),
+    (0.05, 0.55, 0.12, 0.3),
+    (-0.55, -0.05, 0.12, 0.3),
 )
 BOUNDS = REGIONS
 EVAL_REGIONS = REGIONS

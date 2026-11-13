@@ -7,7 +7,11 @@ from mjlab.envs import ManagerBasedRlEnv
 from booster_mjlab.tasks.goalkeeper.source.config import env_cfg
 from booster_mjlab.tasks.goalkeeper.source.events import sample_region_shots
 from booster_mjlab.tasks.goalkeeper.source.physics import ball_spec
-from booster_mjlab.tasks.goalkeeper.source.settings import REGIONS
+from booster_mjlab.tasks.goalkeeper.source.settings import (
+    REGIONS,
+    GOAL_WIDTH,
+    GOAL_HEIGHT,
+)
 from booster_mjlab.tasks.goalkeeper.source.state import state
 
 torch.set_num_threads(1)
@@ -21,6 +25,8 @@ spec.worldbody.add_geom(
 )
 m = spec.compile()
 d = mujoco.MjData(m)
+assert bounds[:, :2].abs().max() + 0.1 < GOAL_WIDTH / 2
+assert bounds[:, 3].max() + 0.1 < GOAL_HEIGHT
 errors = []
 for start, velocity, target, bound in zip(starts, velocities, targets, bounds):
     mujoco.mj_resetData(m, d)
@@ -48,6 +54,17 @@ cfg = env_cfg(6, play=True, randomize=False)
 e = ManagerBasedRlEnv(cfg, device="cpu")
 try:
     e.reset(seed=42)
+    robot = e.scene["robot"]
+    for name in ("Trunk", "Head_2", "left_hand_end_ball"):
+        ids, _ = robot.find_bodies(name)
+        if ids:
+            print(
+                name,
+                "default position",
+                (
+                    robot.data.body_link_pos_w[0, ids[0]] - e.scene.env_origins[0]
+                ).tolist(),
+            )
     gid = e.scene["goal"].indexing.mocap_id
     pos = e.sim.data.mocap_pos[:, gid, :]
     torch.testing.assert_close(pos, e.scene.env_origins)
