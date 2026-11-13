@@ -12,6 +12,7 @@ def collect_categorical_amp_step(
     read_motion_ids,
     *,
     style_weight: float,
+    reward_scale: float = 1.0,
 ):
     device = collector.model.device
 
@@ -47,6 +48,7 @@ def collect_categorical_amp_step(
         task_rewards,
         amp_rewards,
         style_weight=style_weight,
+        reward_scale=reward_scale,
         step_dt=env.unwrapped.step_dt,
         scale_rewards_by_dt=env.cfg.scale_rewards_by_dt,
     )

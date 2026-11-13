@@ -15,6 +15,7 @@ def run_categorical_amp_iteration(
     *,
     num_steps: int,
     style_weight: float,
+    reward_scale: float = 1.0,
     on_env_step=None,
 ):
     if not torch.is_grad_enabled() or torch.is_inference_mode_enabled():
@@ -41,6 +42,7 @@ def run_categorical_amp_iteration(
                 obs,
                 read_motion_ids,
                 style_weight=style_weight,
+                reward_scale=reward_scale,
             )
             sums["total"] += rewards.mean().item()
             for name, value in metrics.items():

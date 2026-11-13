@@ -256,6 +256,7 @@ def run_trial(env, wrapped, runner, policy, shot, *, seed, max_seconds, hand_tim
             task,
             amp,
             style_weight=runner.amp_cfg["style_weight"],
+            reward_scale=runner.amp_cfg["reward_scale"],
             step_dt=env.step_dt,
             scale_rewards_by_dt=env.cfg.scale_rewards_by_dt,
         )
@@ -525,6 +526,10 @@ def main():
         env._diagnostic_shot = {k: v[:1].clone() for k, v in pairs[0][2].items()}
         wrapped = RslRlVecEnvWrapper(env)
         rl = booster_k1_goalkeeper_amp_runner_cfg()
+        checkpoint_metadata = torch.load(
+            args.checkpoint, map_location="cpu", weights_only=True
+        ).get("infos", {}).get("categorical_amp_runner", {})
+        rl.amp.reward_scale = checkpoint_metadata.get("reward_scale", 1.0)
         runner = CategoricalAmpOnPolicyRunner(
             wrapped, asdict(rl), log_dir=None, device=args.device
         )
@@ -592,6 +597,7 @@ def main():
             ), "Frozen model changed"
         summary = {
             "checkpoint": str(args.checkpoint.resolve()),
+            "amp_reward_scale": runner.amp_cfg["reward_scale"],
             "checkpoint_sha256": hashlib.sha256(
                 args.checkpoint.read_bytes()
             ).hexdigest(),

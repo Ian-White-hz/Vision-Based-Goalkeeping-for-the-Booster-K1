@@ -7,6 +7,8 @@ from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 @dataclass
 class CategoricalAmpCfg:
     style_weight: float = 0.4
+    # Independent AMP ablation multiplier; does not change task reward weight.
+    reward_scale: float = 1.0
     reward_mode: Literal["source_noise", "direct"] = "source_noise"
     """Source-compatible noisy reward, or score the actual window without noise."""
     gradient_penalty_coef: float = 0.5

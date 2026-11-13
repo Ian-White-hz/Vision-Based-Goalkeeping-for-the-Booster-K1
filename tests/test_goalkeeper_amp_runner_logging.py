@@ -55,6 +55,7 @@ with TemporaryDirectory(prefix="goalkeeper_amp_runner_") as directory:
         "AMP/step_reward/style_component",
         "AMP/step_reward/total",
         "AMP/valid_fraction",
+        "AMP/reward_scale",
         "AMP/normalizer_count",
         "Discriminator/lefthand/total_loss",
         "Discriminator/rightstep/gradient_penalty",

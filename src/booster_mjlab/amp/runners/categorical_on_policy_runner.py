@@ -34,6 +34,9 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
         if not isinstance(self.alg, CategoricalAmpPPO):
             raise TypeError("Use CategoricalAmpPpoAlgorithmCfg with this runner")
         self.amp_cfg = self.cfg["amp"]
+        scale = self.amp_cfg.setdefault("reward_scale", 1.0)
+        if not math.isfinite(scale) or scale < 0.0:
+            raise ValueError("reward_scale must be finite and nonnegative")
         weight = self.amp_cfg["style_weight"]
         if not math.isfinite(weight) or not 0.0 <= weight <= 1.0:
             raise ValueError("style_weight must be finite and in [0, 1]")
@@ -115,6 +118,7 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
                     self._read_motion_ids,
                     num_steps=self.cfg["num_steps_per_env"],
                     style_weight=self.amp_cfg["style_weight"],
+                    reward_scale=self.amp_cfg["reward_scale"],
                     on_env_step=self.logger.process_env_step,
                 )
                 self._last_iteration_summary = summary
@@ -182,6 +186,7 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
             writer.add_scalar(f"PPO/{name}", value, it)
         for name, value in summary["reward_means"].items():
             writer.add_scalar(f"AMP/step_reward/{name}", value, it)
+        writer.add_scalar("AMP/reward_scale", self.amp_cfg["reward_scale"], it)
         writer.add_scalar("AMP/valid_fraction", summary["amp_valid_fraction"], it)
         writer.add_scalar(
             "Train/completed_iterations", self.current_learning_iteration, it
@@ -243,6 +248,8 @@ class CategoricalAmpOnPolicyRunner(BoosterOnPolicyRunner):
             "total_timesteps": self.total_timesteps,
             "total_time": self.total_time,
             **self._runner_signature(),
+            # Experiment knob, intentionally not a compatibility requirement.
+            "reward_scale": self.amp_cfg["reward_scale"],
         }
         saved_infos = {
             **(infos or {}),

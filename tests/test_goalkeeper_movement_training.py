@@ -21,6 +21,7 @@ env = ManagerBasedRlEnv(booster_k1_goalkeeper_amp_env_cfg(
 try:
     wrapped = RslRlVecEnvWrapper(env)
     cfg = booster_k1_goalkeeper_amp_runner_cfg()
+    cfg.amp.reward_scale = 0.25
     cfg.num_steps_per_env = 4
     cfg.algorithm.num_learning_epochs = 1
     cfg.algorithm.num_mini_batches = 1
