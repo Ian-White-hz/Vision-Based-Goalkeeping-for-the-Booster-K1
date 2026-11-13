@@ -142,6 +142,38 @@ class SourceRunner:
                             (task.mean() * 0.6, amp.mean() * 0.4, total.mean())
                         )
                         if writer:
+                            source = state(self.env.unwrapped)
+                            for region in range(6):
+                                selected = ids == region
+                                if selected.any():
+                                    prefix = f"Region/{region}/"
+                                    writer.add_scalar(
+                                        prefix + "amp",
+                                        (0.4 * amp[selected]).mean().item(),
+                                        self.total_timesteps,
+                                    )
+                                    for name, values in source.rewards.items():
+                                        weight = self.env.unwrapped.cfg.rewards[
+                                            name
+                                        ].weight
+                                        writer.add_scalar(
+                                            prefix + "reward_" + name,
+                                            (
+                                                0.6
+                                                * self.env.unwrapped.step_dt
+                                                * weight
+                                                * values[selected]
+                                            )
+                                            .mean()
+                                            .item(),
+                                            self.total_timesteps,
+                                        )
+                                    for name, values in source.diagnostics.items():
+                                        writer.add_scalar(
+                                            prefix + name,
+                                            values[selected].mean().item(),
+                                            self.total_timesteps,
+                                        )
                             for key, value in extras.get("log", {}).items():
                                 if torch.isfinite(torch.as_tensor(value)).all():
                                     writer.add_scalar(

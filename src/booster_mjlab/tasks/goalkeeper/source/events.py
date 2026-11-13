@@ -3,7 +3,7 @@
 import random
 import torch
 from .state import state
-from .settings import GOAL_X
+from .settings import GOAL_X, INTERCEPT_X, INTERCEPT_HEIGHTS, REGIONS
 
 
 def reset(env, env_ids=None):
@@ -70,9 +70,11 @@ def reset(env, env_ids=None):
     goal_pose[:, :3] = env.scene.env_origins[ids]
     goal_pose[:, 3] = 1.0
     env.scene["goal"].write_mocap_pose_to_sim(goal_pose, env_ids=ids)
-    start, velocity, target = sample_region_shots(s.command_ranges[ids])
+    start, velocity, target = sample_region_shots(
+        s.command_ranges[ids], s.end_regions[ids]
+    )
     # Reward target is the actual ballistic crossing at the robot plane.
-    t = (0.1 - start[:, 0]) / velocity[:, 0]
+    t = (INTERCEPT_X - start[:, 0]) / velocity[:, 0]
     intercept = start + velocity * t[:, None]
     intercept[:, 2] -= 0.5 * 9.81 * t.square()
     s.end_target[ids] = intercept + env.scene.env_origins[ids]
@@ -81,7 +83,11 @@ def reset(env, env_ids=None):
     ball[:, 3] = 1.0
     ball[:, 7:10] = velocity
     env.scene["ball"].write_root_state_to_sim(ball, env_ids=ids)
+    s.jump_state.reset(ids, root[:, 2])
     s.ball_vel[ids] = velocity[:, 0]
+    s.first_visible[ids] = -1
+    s.first_near[ids] = -1
+    s.guide_steps[ids] = 0
     s.catchstep[ids] = 50
     s.vanish_step[ids] = torch.randint(0, 30, (len(ids),), device=env.device)
     for name in (
@@ -128,29 +134,48 @@ def perturb(env, env_ids=None):
         r.write_root_state_to_sim(root)
 
 
-def sample_region_shots(bounds):
-    """Ball-centre regions are defined at the visible goal plane x=-0.8.
-
-    Interior sampling reserves numerical margin; no ball perturbations may be
-    enabled when guaranteed region arrival is required. Robot contact can of
-    course redirect the shot.
-    """
+def sample_region_shots(bounds, region_ids=None, max_attempts=512):
+    """Reject shots violating either goal bounds or robot-plane constraints."""
     n = len(bounds)
-
-    def rand():
-        return torch.rand(n, device=bounds.device)
-
-    start = torch.stack((3 + 2 * rand(), -1.0 + 2 * rand(), 0.2 + 0.6 * rand()), -1)
-    margin = 0.04
-    target = torch.stack(
-        (
-            torch.full_like(rand(), GOAL_X),
-            bounds[:, 0] + margin + rand() * (bounds[:, 1] - bounds[:, 0] - 2 * margin),
-            bounds[:, 2] + margin + rand() * (bounds[:, 3] - bounds[:, 2] - 2 * margin),
-        ),
-        -1,
-    )
-    flight = 0.5 + 0.3 * rand()
-    velocity = (target - start) / flight[:, None]
-    velocity[:, 2] += 0.5 * 9.81 * flight
-    return start, velocity, target
+    if region_ids is None:
+        reference = torch.tensor(REGIONS, device=bounds.device, dtype=bounds.dtype)
+        match = (bounds[:, None] == reference[None]).all(-1)
+        if not match.any(-1).all():
+            raise ValueError("Explicit region_ids required for custom bounds")
+        region_ids = match.long().argmax(-1)
+    heights = torch.tensor(INTERCEPT_HEIGHTS, device=bounds.device)[region_ids]
+    if (
+        not torch.isfinite(bounds).all()
+        or ((bounds[:, [1, 3]] - bounds[:, [0, 2]]) <= 0.08).any()
+    ):
+        raise ValueError("Invalid region bounds")
+    start = torch.empty((n, 3), device=bounds.device)
+    velocity = torch.empty_like(start)
+    target = torch.empty_like(start)
+    pending = torch.arange(n, device=bounds.device)
+    for _ in range(max_attempts):
+        if not len(pending):
+            return start, velocity, target
+        r = torch.rand((len(pending), 6), device=bounds.device)
+        b = bounds[pending]
+        p = torch.stack((1.5 + r[:, 0], -1 + 2 * r[:, 1], 0.15 + 0.65 * r[:, 2]), -1)
+        end = torch.stack(
+            (
+                torch.full_like(r[:, 0], GOAL_X),
+                b[:, 0] + 0.04 + r[:, 3] * (b[:, 1] - b[:, 0] - 0.08),
+                b[:, 2] + 0.04 + r[:, 4] * (b[:, 3] - b[:, 2] - 0.08),
+            ),
+            -1,
+        )
+        ti = 0.7 + 0.2 * r[:, 5]
+        vx = (INTERCEPT_X - p[:, 0]) / ti
+        total = (GOAL_X - p[:, 0]) / vx
+        v = (end - p) / total[:, None]
+        v[:, 2] += 0.5 * 9.81 * total
+        zi = p[:, 2] + v[:, 2] * ti - 0.5 * 9.81 * ti.square()
+        # Integration margin for dt=.005 semi-implicit gravity.
+        valid = (zi >= heights[pending, 0] + 0.03) & (zi <= heights[pending, 1] - 0.02)
+        ids = pending[valid]
+        start[ids], velocity[ids], target[ids] = p[valid], v[valid], end[valid]
+        pending = pending[~valid]
+    raise RuntimeError(f"No feasible region shots for {len(pending)} environments")

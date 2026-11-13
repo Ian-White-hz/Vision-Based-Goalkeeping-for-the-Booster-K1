@@ -63,6 +63,8 @@ try:
         wrapped.step(torch.zeros(6, 22))
         s.refresh()
         for name in REWARD_SCALES:
+            if name == "successland":
+                continue  # K1 adaptation covered by test_goalkeeper_source_small_jump.py.
             # Snapshot source stateful flags for identical preconditions.
             flags = [s.stop_flag.clone(), s.success_flag.clone(), s.has_in_air.clone()]
             expected = ns["_reward_" + name](s)

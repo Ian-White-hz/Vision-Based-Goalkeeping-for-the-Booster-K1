@@ -11,6 +11,9 @@ from booster_mjlab.tasks.goalkeeper.source.settings import (
     REGIONS,
     GOAL_WIDTH,
     GOAL_HEIGHT,
+    GOAL_X,
+    INTERCEPT_HEIGHTS,
+    INTERCEPT_X,
 )
 from booster_mjlab.tasks.goalkeeper.source.state import state
 
@@ -28,7 +31,9 @@ d = mujoco.MjData(m)
 assert bounds[:, :2].abs().max() + 0.1 < GOAL_WIDTH / 2
 assert bounds[:, 3].max() + 0.1 < GOAL_HEIGHT
 errors = []
-for start, velocity, target, bound in zip(starts, velocities, targets, bounds):
+for shot_id, (start, velocity, target, bound) in enumerate(
+    zip(starts, velocities, targets, bounds)
+):
     mujoco.mj_resetData(m, d)
     d.qpos[:3] = start.numpy()
     d.qpos[3] = 1
@@ -38,8 +43,14 @@ for start, velocity, target, bound in zip(starts, velocities, targets, bounds):
         previous = d.qpos[:3].copy()
         mujoco.mj_step(m, d)
         assert d.ncon == 0, "Ground contact before goal crossing"
-        if d.qpos[0] <= -0.8:
-            f = (-0.8 - previous[0]) / (d.qpos[0] - previous[0])
+        if previous[0] > INTERCEPT_X >= d.qpos[0]:
+            f = (INTERCEPT_X - previous[0]) / (d.qpos[0] - previous[0])
+            z = previous[2] + f * (d.qpos[2] - previous[2])
+            lo, hi = INTERCEPT_HEIGHTS[shot_id % 6]
+            assert lo <= z <= hi, (z, lo, hi)
+            assert 0.695 <= d.time - 0.005 + f * 0.005 <= 0.905
+        if d.qpos[0] <= GOAL_X:
+            f = (GOAL_X - previous[0]) / (d.qpos[0] - previous[0])
             p = previous + f * (d.qpos[:3] - previous)
             assert bound[0] <= p[1] <= bound[1] and bound[2] <= p[2] <= bound[3], (
                 p,

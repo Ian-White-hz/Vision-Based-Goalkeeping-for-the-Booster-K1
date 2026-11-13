@@ -10,6 +10,8 @@ import torch
 from mjlab.utils.lab_api.math import quat_apply_inverse
 from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
 from .vendor.rewards import SourceRewards
+from .jump_state import JumpState
+from .settings import INTERCEPT_X
 from .settings import REGIONS, BOUNDS, EVAL_REGIONS, REWARD_SCALES, SourceSettings
 
 
@@ -57,6 +59,7 @@ class SourceState(SourceRewards):
         self.end_target, self.ball_last = z(3), z(3)
         self.ball_vel, self.dist, self.stop_flag, self.success_flag = z(), z(), z(), z()
         self.has_in_air = z().bool()
+        self.jump_state = JumpState(self.num_envs, self.device)
         self.actions, self.last_actions, self.last_last_actions = z(22), z(22), z(22)
         self.last_dof_vel = z(22)
         self.history = z(750)
@@ -93,7 +96,23 @@ class SourceState(SourceRewards):
         )
         self.offset = z(22)
         self.rewards = {k: z() for k in REWARD_SCALES}
+        self.first_visible = torch.full_like(self.catchstep, -1)
+        self.guide_steps = torch.zeros_like(self.catchstep)
+        self.first_near = torch.full_like(self.catchstep, -1)
+        self.diagnostics = {}
         self.terminal_critic = z(92)
+
+    def _reward_successland(self):
+        force_z = self.contact_forces[:, self.contact_feet_indices, 2]
+        self.has_in_air = self.jump_state.update(self.root_states[:, 2], force_z)
+        both = (force_z > 1).all(-1)
+        one = (force_z > 1).sum(-1) == 1
+        jumping_region = (self.end_regions == 2) | (self.end_regions == 3)
+        return (
+            self.has_in_air.float()
+            * (1 + 5 * both.float() - one.float())
+            * jumping_region
+        )
 
     def refresh(self):
         r, b = self.robot.data, self.env.scene["ball"].data
@@ -140,7 +159,7 @@ class SourceState(SourceRewards):
         self.end_target[approach] = self.ball_states[approach, :3]
         self.end_target[:, 0] = torch.maximum(
             torch.minimum(self.end_target[:, 0], self.env_origins[:, 0] + 1.0),
-            self.env_origins[:, 0] + 0.1,
+            self.env_origins[:, 0] + INTERCEPT_X,
         )
         hands = self.rigid_body_states[:, self.hand_indices, :3]
         chosen = hands[
@@ -162,6 +181,18 @@ class SourceState(SourceRewards):
                     else 1.0
                 )
             self.rewards[name] = value * multiplier
+        near = (x <= 1.5) & (x >= 0) & (changed < 2.0)
+        fresh_near = near & (self.first_near < 0)
+        self.first_near[fresh_near] = 50 - self.catchstep[fresh_near]
+        self.guide_steps += near.long()
+        self.diagnostics = {
+            "guide_seconds": self.guide_steps.float() * self.dt,
+            "action_release_seconds": torch.full_like(
+                x, (50 - self.startstep) * self.dt
+            ),
+            "near_phase": near.float(),
+            "first_near_seconds": self.first_near.float() * self.dt,
+        }
         self.terminal_critic = self.critic().clone()
         self.last_last_actions.copy_(self.last_actions)
         self.last_actions.copy_(self.actions)
@@ -224,6 +255,10 @@ class SourceState(SourceRewards):
             )
             current += (2 * torch.rand_like(current) - 1) * scale
             flying &= self.catchstep > self.vanish_step
+        visible = flying & (self.catchstep < self.startstep)
+        first = visible & (self.first_visible < 0)
+        self.first_visible[first] = 50 - self.catchstep[first]
+        self.diagnostics["first_visible_seconds"] = self.first_visible.float() * self.dt
         current[:, :3] *= flying[:, None]
         self.history = torch.cat((self.history[:, 75:], current), -1).clamp(-100, 100)
         return self.history

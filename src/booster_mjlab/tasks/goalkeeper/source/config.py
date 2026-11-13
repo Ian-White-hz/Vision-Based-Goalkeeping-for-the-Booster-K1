@@ -62,6 +62,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
             goal_height=GOAL_HEIGHT,
             goal_width=GOAL_WIDTH,
             goal_x=GOAL_X,
+            robot_x_limit=0.05,
         ),
         num_envs=num_envs,
     )

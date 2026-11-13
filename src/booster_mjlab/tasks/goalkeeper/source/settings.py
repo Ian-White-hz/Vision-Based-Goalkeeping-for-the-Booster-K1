@@ -14,7 +14,16 @@ MOTION_NAMES = (
 # dynamic reach guarantee. Ball-centre bounds leave radius clearance.
 GOAL_WIDTH = 1.5
 GOAL_HEIGHT = 1.1
-GOAL_X = -0.8
+GOAL_X = -0.1
+INTERCEPT_X = 0.0
+INTERCEPT_HEIGHTS = (
+    (0.4, 0.75),
+    (0.4, 0.75),
+    (0.8, 1.05),
+    (0.8, 1.05),
+    (0.15, 0.35),
+    (0.15, 0.35),
+)
 REGIONS = (
     (0.05, 0.55, 0.3, 0.65),
     (-0.55, -0.05, 0.3, 0.65),
@@ -38,6 +47,7 @@ REWARD_SCALES = dict(
     feet_slippage=3.0,
     postorientation=3.0,
     postangvel=3.0,
+    postlinvel=1.0,
     postupperdofpos=1.0,
     ang_vel_xy=-0.1,
     dof_acc=-2.5e-7,
