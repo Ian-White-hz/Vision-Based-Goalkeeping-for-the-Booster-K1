@@ -1,0 +1,35 @@
+{
+  "commit": "976a81ff19b7306bafbe923d2890066b68a85271",
+  "files": {
+    "actor_critic.py": {
+      "source": "rsl_rl/rsl_rl/modules/actor_critic.py",
+      "sha256": "acebafe6e5e8d38e7407212d2a2a30ddaa84867ac8f68c7877d98e1777d423ae"
+    },
+    "amp.py": {
+      "source": "rsl_rl/rsl_rl/modules/amp.py",
+      "sha256": "768484c69269134b4fbab31359257b63394ff27f02aa1726cda7e3303ba4c9a1"
+    },
+    "storage.py": {
+      "source": "rsl_rl/rsl_rl/storage/him_rollout_storage.py",
+      "sha256": "36651f122eca91091557b62425cf7e71e1064fbc2a122d88cf1406e0697f73ae"
+    },
+    "ppo.py": {
+      "source": "rsl_rl/rsl_rl/algorithms/him_ppo.py",
+      "sha256": "feb5c1174297d8572380176391f654d9e58fe3b751f6616b9e8ba59df5efb596"
+    },
+    "rewards.py": {
+      "source": "legged_gym/legged_gym/envs/base/legged_robot.py",
+      "sha256": "d2de0c8f251025146648f0dfc6bfb1a322f38ce7a0f7a779dc9097772d282b86"
+    },
+    "normalizer.py": {
+      "source": "rsl_rl/rsl_rl/utils/utils.py",
+      "sha256": "55626716f8ec553dc5bf2eb399d8cf6cbe2bde05405bd790fca5ffaca56ac367"
+    }
+  },
+  "additional_sources": {
+    "legged_gym/legged_gym/envs/g1/g1_29_config.py": "f86f5d5a203cb60f96325be1cb6d2e3c5ea9644bb832a277d156434352c05491",
+    "legged_gym/legged_gym/envs/base/legged_robot_config.py": "89f4817ce893d8dd3206f0a2e68d6ddc885441be4d68b2a4e8a4be6ac5c158a5",
+    "legged_gym/legged_gym/envs/g1/g1_utils.py": "774be148cd4b6c5baf3cbc5331d57938c1586ae1853bbf471aefd5ba327c2b10",
+    "legged_gym/resources/gymassets/urdf/ball.urdf": "9de4f58cd13dc9bed1a14af69192f212f1d5849bfac10f897d648f062376041b"
+  }
+}

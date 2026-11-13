@@ -21,3 +21,14 @@ register_mjlab_task(
 )
 
 register_booster_k1_goalkeeper_amp_task()
+
+# Isolated reproduction of the upstream G1 task flow on the K1 plant.
+from ...source.config import env_cfg as source_env_cfg, runner_cfg as source_runner_cfg
+from ...source.runner import SourceRunner
+register_mjlab_task(
+    task_id="Mjlab-Goalkeeper-Source-Flat-Booster-K1",
+    env_cfg=source_env_cfg(),
+    play_env_cfg=source_env_cfg(num_envs=6, play=True),
+    rl_cfg=source_runner_cfg(),
+    runner_cls=SourceRunner,
+)
