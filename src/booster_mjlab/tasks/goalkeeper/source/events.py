@@ -65,32 +65,16 @@ def reset(env, env_ids=None):
     )
     r.write_root_state_to_sim(root, env_ids=ids)
 
-    def rand():
-        return torch.rand(len(ids), device=env.device)
-
-    scale = 1.0  # Source metres, deliberately not resized implicitly.
-    start = (
-        torch.stack((3 + 2 * rand(), -1.8 + 3.6 * rand(), 0.1 + 1.7 * rand()), -1)
-        * scale
-    )
-    bounds = s.command_ranges[ids]
-    end = torch.stack(
-        (
-            (-0.1 - 0.5 * rand()) * scale,
-            bounds[:, 0] + rand() * (bounds[:, 1] - bounds[:, 0]),
-            bounds[:, 2] + rand() * (bounds[:, 3] - bounds[:, 2]),
-        ),
-        -1,
-    )
-    flight = (
-        (0.5 + 0.5 * torch.rand(1, device=env.device))
-        if s.settings.play
-        else (0.4 + 0.6 * torch.rand(1, device=env.device))
-    )
-    velocity = (end - start) / flight
-    velocity[:, 2] += 0.5 * 9.81 * flight
-    fraction = (0.1 * scale - start[:, 0:1]) / (end[:, 0:1] - start[:, 0:1])
-    s.end_target[ids] = start + (end - start) * fraction + env.scene.env_origins[ids]
+    goal_pose = torch.zeros((len(ids), 7), device=env.device)
+    goal_pose[:, :3] = env.scene.env_origins[ids]
+    goal_pose[:, 3] = 1.0
+    env.scene["goal"].write_mocap_pose_to_sim(goal_pose, env_ids=ids)
+    start, velocity, target = sample_region_shots(s.command_ranges[ids])
+    # Reward target is the actual ballistic crossing at the robot plane.
+    t = (0.1 - start[:, 0]) / velocity[:, 0]
+    intercept = start + velocity * t[:, None]
+    intercept[:, 2] -= 0.5 * 9.81 * t.square()
+    s.end_target[ids] = intercept + env.scene.env_origins[ids]
     ball = torch.zeros((len(ids), 13), device=env.device)
     ball[:, :3] = start + env.scene.env_origins[ids]
     ball[:, 3] = 1.0
@@ -124,7 +108,9 @@ def perturb(env, env_ids=None):
     v = ball.data.root_link_lin_vel_w
     force = torch.zeros_like(v)
     if s.settings.ball_drag:
-        force = -0.5 * 1.225 * 0.47 * torch.pi * 0.1**2 * v.norm(dim=-1, keepdim=True) * v
+        force = (
+            -0.5 * 1.225 * 0.47 * torch.pi * 0.1**2 * v.norm(dim=-1, keepdim=True) * v
+        )
     if s.settings.ball_force_noise:
         force += torch.empty_like(force).uniform_(-0.5, 0.5)
     ball.write_external_wrench_to_sim(force[:, None], torch.zeros_like(force[:, None]))
@@ -139,3 +125,31 @@ def perturb(env, env_ids=None):
         root = torch.cat((r.data.root_link_pose_w, r.data.root_link_vel_w), -1).clone()
         root[:, 7:9] = torch.empty_like(root[:, 7:9]).uniform_(-1.5, 1.5)
         r.write_root_state_to_sim(root)
+
+
+def sample_region_shots(bounds):
+    """Ball-centre regions are defined at the visible goal plane x=-0.8.
+
+    Interior sampling reserves numerical margin; no ball perturbations may be
+    enabled when guaranteed region arrival is required. Robot contact can of
+    course redirect the shot.
+    """
+    n = len(bounds)
+
+    def rand():
+        return torch.rand(n, device=bounds.device)
+
+    start = torch.stack((3 + 2 * rand(), -1.0 + 2 * rand(), 0.2 + 0.8 * rand()), -1)
+    margin = 0.04
+    target = torch.stack(
+        (
+            torch.full_like(rand(), -0.8),
+            bounds[:, 0] + margin + rand() * (bounds[:, 1] - bounds[:, 0] - 2 * margin),
+            bounds[:, 2] + margin + rand() * (bounds[:, 3] - bounds[:, 2] - 2 * margin),
+        ),
+        -1,
+    )
+    flight = 0.5 + 0.3 * rand()
+    velocity = (target - start) / flight[:, None]
+    velocity[:, 2] += 0.5 * 9.81 * flight
+    return start, velocity, target

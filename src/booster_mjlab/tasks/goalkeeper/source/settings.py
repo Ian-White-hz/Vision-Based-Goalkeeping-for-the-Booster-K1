@@ -1,4 +1,4 @@
-"""Literal G129Cfg task constants (metres), with explicit robot substitutions."""
+"""Source reward constants with explicit K1 goal-plane region adaptations."""
 
 from dataclasses import dataclass
 
@@ -11,30 +11,18 @@ MOTION_NAMES = (
     "rightstep",
 )
 # width min/max, height min/max, in the source order.
+# K1 baseline: ball-centre bounds at goal x=-0.8. High regions remain
+# challenging; these bounds are not a claim that every shot is reachable.
 REGIONS = (
-    (0.2, 1.2, 0.4, 1.2),
-    (-1.2, -0.2, 0.4, 1.2),
-    (0, 1, 1.2, 1.6),
-    (-1, 0, 1.2, 1.6),
-    (0.2, 1.2, 0.1, 0.3),
-    (-1.2, -0.2, 0.1, 0.3),
+    (0.1, 0.6, 0.4, 0.75),
+    (-0.6, -0.1, 0.4, 0.75),
+    (0.1, 0.6, 0.75, 1.05),
+    (-0.6, -0.1, 0.75, 1.05),
+    (0.1, 0.6, 0.12, 0.3),
+    (-0.6, -0.1, 0.12, 0.3),
 )
-BOUNDS = (
-    (0, 1.8, 0.3, 1.5),
-    (-1.8, 0, 0.3, 1.5),
-    (0, 1.5, 1.2, 1.8),
-    (-1.5, 0, 1.2, 1.8),
-    (0, 1.8, 0.1, 0.3),
-    (-1.8, 0, 0.1, 0.3),
-)
-EVAL_REGIONS = (
-    (0, 1.5, 0.3, 1.5),
-    (-1.5, 0, 0.3, 1.5),
-    (0, 1.5, 1.2, 1.8),
-    (-1.5, 0, 1.2, 1.8),
-    (0, 1.5, 0.1, 0.3),
-    (-1.5, 0, 0.1, 0.3),
-)
+BOUNDS = REGIONS
+EVAL_REGIONS = REGIONS
 REWARD_SCALES = dict(
     eereach=10.0,
     success=5.0,
