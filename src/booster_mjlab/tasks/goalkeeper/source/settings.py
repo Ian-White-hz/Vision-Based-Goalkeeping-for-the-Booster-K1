@@ -16,6 +16,23 @@ GOAL_WIDTH = 1.5
 GOAL_HEIGHT = 1.1
 GOAL_X = -0.1
 INTERCEPT_X = 0.0
+# Shot launch: origin x range and time to reach the robot plane. 3..4.5 m with
+# .6...8 s gives |vx| ~4.4..6.4 m/s and 25..40 deg descent (10-90%); the
+# previous 1.5..2.5 m / .7...9 s produced 47..62 deg lobs.
+SHOT_START_X = (3.0, 4.5)
+SHOT_INTERCEPT_TIME = (0.6, 0.8)
+# Actor sees the ball only inside this robot-frame x range (upstream 3.4 for
+# 3..5 m launches); must exceed SHOT_START_X[1] or early flight is hidden.
+BALL_VISIBLE_X = 4.8
+# Ball-phase thresholds rescaled for K1 shots (see k1_rewards.py).
+# Upstream: far phase x>1.5, deflection dvx>2 (~36% of median |vx|), behind
+# x<0. With K1 shots at |vx|~5.3 m/s, x=1.5 again leaves ~.28 s of reach phase.
+PHASE1_X = 1.5
+DEFLECT_RATIO = 0.4
+DEFLECT_MIN = 0.5
+BEHIND_X = GOAL_X
+# EMA weight per finished episode for the episode-length curriculum signal.
+CURRICULUM_EMA = 0.01
 INTERCEPT_HEIGHTS = (
     (0.4, 0.75),
     (0.4, 0.75),

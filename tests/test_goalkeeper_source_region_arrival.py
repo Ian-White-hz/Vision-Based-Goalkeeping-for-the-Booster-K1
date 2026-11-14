@@ -14,6 +14,7 @@ from booster_mjlab.tasks.goalkeeper.source.settings import (
     GOAL_X,
     INTERCEPT_HEIGHTS,
     INTERCEPT_X,
+    SHOT_INTERCEPT_TIME,
 )
 from booster_mjlab.tasks.goalkeeper.source.state import state
 
@@ -48,7 +49,11 @@ for shot_id, (start, velocity, target, bound) in enumerate(
             z = previous[2] + f * (d.qpos[2] - previous[2])
             lo, hi = INTERCEPT_HEIGHTS[shot_id % 6]
             assert lo <= z <= hi, (z, lo, hi)
-            assert 0.695 <= d.time - 0.005 + f * 0.005 <= 0.905
+            assert (
+                SHOT_INTERCEPT_TIME[0] - 0.005
+                <= d.time - 0.005 + f * 0.005
+                <= SHOT_INTERCEPT_TIME[1] + 0.005
+            )
         if d.qpos[0] <= GOAL_X:
             f = (GOAL_X - previous[0]) / (d.qpos[0] - previous[0])
             p = previous + f * (d.qpos[:3] - previous)

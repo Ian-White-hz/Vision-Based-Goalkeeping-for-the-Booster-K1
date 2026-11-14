@@ -62,6 +62,10 @@ try:
         )
         wrapped.step(torch.zeros(6, 22))
         s.refresh()
+        # K1 rescales ball-phase thresholds; upstream values must reproduce it.
+        upstream = dict(phase1_x=1.5, deflect_ratio=0.0, deflect_min=2.0, behind_x=0.0)
+        for k, v in upstream.items():
+            setattr(s, k, v)
         for name in REWARD_SCALES:
             if name == "successland":
                 continue  # K1 adaptation covered by test_goalkeeper_source_small_jump.py.
@@ -73,11 +77,13 @@ try:
             s.has_in_air.copy_(flags[2])
             actual = getattr(s, "_reward_" + name)()
             torch.testing.assert_close(actual, expected)
+        for k in upstream:
+            delattr(s, k)
         print("All applicable source reward methods match upstream on real K1 state")
     else:
         print("SKIP upstream checkout parity (standalone smoke remains active)")
     # Monotonic jump velocity bonus, source low-region hand target (not feet).
-    s.ball_states[:, 0] = s.env_origins[:, 0] + 1.0
+    s.ball_states[:, 0] = s.env_origins[:, 0] + 0.5  # reach phase (below PHASE1_X)
     s.ball_vel[:] = -5.0
     s.ball_states[:, 7] = -5.0
     s.dist[:] = 0.2

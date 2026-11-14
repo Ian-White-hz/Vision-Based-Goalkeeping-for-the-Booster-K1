@@ -241,6 +241,11 @@ class SourceRunner:
                         self.current_learning_iteration,
                     )
                     writer.add_scalar(
+                        "Train/curriculum_episode_length_ema",
+                        state(self.env.unwrapped).episode_length_ema,
+                        self.current_learning_iteration,
+                    )
+                    writer.add_scalar(
                         "Train/learning_rate",
                         self.alg.learning_rate,
                         self.current_learning_iteration,
@@ -279,6 +284,7 @@ class SourceRunner:
                 "level": s.curriculumupdate,
                 "ranges": s.command_ranges,
                 "startstep": s.startstep,
+                "episode_length_ema": s.episode_length_ema,
             },
             "common_step_counter": self.env.unwrapped.common_step_counter,
             "last_step_counter": s.last_step_counter,
@@ -314,6 +320,7 @@ class SourceRunner:
             s = state(self.env.unwrapped)
             s.curriculumupdate = p["curriculum"]["level"]
             s.startstep = p["curriculum"]["startstep"]
+            s.episode_length_ema = p["curriculum"].get("episode_length_ema", -1.0)
             ranges = p["curriculum"]["ranges"].to(self.device)
             if ranges.shape != s.command_ranges.shape:
                 raise ValueError("Full resume requires same number of environments")

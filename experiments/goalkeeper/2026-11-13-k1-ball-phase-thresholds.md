@@ -1,0 +1,81 @@
+# K1 shot shape, ball-phase thresholds and smoothed curriculum
+
+Branch `experiment/k1-source-goalkeeper`, task `Mjlab-Goalkeeper-Source-Flat-Booster-K1`.
+
+## Motivation (diagnosis of v3 model_1000)
+
+Upstream reward thresholds are sized for G1 shots (start x=3..5 m, vx about
+-3..-12 m/s). After the K1 compact-goal change shots start at x=1.5..2.5 m with
+vx -1.72..-3.55 m/s (median -2.72, 6000 sampled shots).
+
+- Far-phase positioning (`eereach` phase1, ball x>1.5) lasted 0.21 s on average and
+  overlapped the 3..10-step invisible/action-hold window, so it was effectively gone.
+- Deflection (`vx - vx0 > 2`) needed about 75% of median K1 speed (upstream about 36%).
+  Frozen eval: region 0 touched (dvx>.5) 59%, credited 42%.
+- `x > 0` cut off contacts with the ball centre just behind the robot plane.
+- Curriculum level = mean length of the episodes resetting at the update step.
+  With 512 envs it flipped 0/1/2/1/3/2, so reach/success/stopball multipliers
+  (1..2.5x) and joint-limit multipliers (1..3x) changed from one update to the next.
+
+Shot shape: every shot was a plunging lob. At the robot plane the descent angle was
+47/54/62 deg (10/50/90%), apex 1.1..1.6 m (above the 0.76 m Head_2 origin), and |vz|
+exceeded |vx|. Cause: 1.5..2.5 m launch distance with .7...9 s to arrive. Each
+control step drops the ball ~7 cm near the robot, and a 10 cm hand x error is
+~14 cm of height error. Upstream descent is about 20..50 deg.
+
+The robot standing on the goal line (goal x=-0.1) is not a training defect: the goal
+is visual only (no collision, not read by any reward), and upstream ball endpoints
+are also .1...6 m behind the robot. Moving the goal back to -0.5 under the
+current dual goal-plane/robot-plane region constraints makes low regions infeasible
+(0% sampler acceptance), so it stays at -0.1.
+
+## Changes
+
+Shots (option B): `SHOT_START_X`=3..4.5 m, `SHOT_INTERCEPT_TIME`=.6...8 s. Analytic,
+60k samples: descent 25/33/40 deg, apex median 1.11 m, |vx| 4.4/5.3/6.4 m/s.
+Reaction time is ~0.1 s shorter than before. High regions have lower rejection-sampler
+acceptance (~51%), which the 512-attempt sampler absorbs. Actor ball visibility
+cutoff `BALL_VISIBLE_X` raised from 3.4 to 4.8 m so launches are not hidden.
+
+`source/k1_rewards.py` overrides eereach, stopball and the four post* terms with
+threshold attributes. Formulas are unchanged. `vendor/` is untouched. With the new shot
+speed, upstream far-phase x=1.5 again leaves ~.28 s of reach phase, so `PHASE1_X`
+returns to 1.5. Deflection and behind thresholds are still needed.
+
+| threshold | upstream | K1 |
+| --- | --- | --- |
+| far phase | x > 1.5 | `PHASE1_X`=1.5 (attribute; same value under new shots) |
+| deflection | dvx > 2 | dvx > max(0.4 * abs(vx0), 0.5) |
+| behind / deflection line | x < 0 / x > 0 | `BEHIND_X` = `GOAL_X` = -0.1 |
+| curriculum signal | batch mean length | EMA over finished episodes (weight 0.01 per episode; first batch initialises) |
+
+The EMA is saved in checkpoints and logged as `Train/curriculum_episode_length_ema`.
+Older checkpoints resume with the sentinel, so the first finished batch initialises it.
+
+## Validation
+
+- `test_goalkeeper_source_flow.py`: with the upstream thresholds set on the state,
+  every applicable reward still matches upstream exactly on real K1 state.
+  The jump-bonus check moved its ball to x=0.5, inside the reach phase.
+- New `test_goalkeeper_source_k1_thresholds.py`: relative and floor deflection,
+  the one-shot reward, the behind line, the far/near phase switch, and EMA smoothing.
+- Randomization and small-jump tests pass. Ruff passes.
+
+- Region arrival: 600/600 MuJoCo goal crossings inside the assigned region, max
+  error .020 m; robot-plane timing asserted within `SHOT_INTERCEPT_TIME`.
+- Threshold test also asserts median descent < 40 deg, 90th percentile < 48 deg,
+  median |vx| > 4.5, and visibility above the launch range.
+
+Detection check before the shot change (v3 model_1000, old lob shots, frozen,
+100 per region):
+
+| region | proxy save | ball kept out | touched dvx>.5 |
+| --- | --- | --- | --- |
+| 0 / 1 | .62 / .54 | .48 / .46 | .65 / .62 |
+| 2 / 3 | .19 / .15 | .09 / .11 | .16 / .15 |
+| 4 / 5 | .82 / .78 | .79 / .69 | .85 / .81 |
+
+The proxy now tracks touches but over-credits by about 10 pp: some deflections still
+enter the goal. Report "ball kept out" as the outcome metric, not the proxy.
+Old checkpoints load but were trained on lobs; retrain from scratch. No training
+result yet; this is not a learned-policy claim.

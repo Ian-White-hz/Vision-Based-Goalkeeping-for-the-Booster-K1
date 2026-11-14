@@ -3,7 +3,15 @@
 import random
 import torch
 from .state import state
-from .settings import GOAL_X, INTERCEPT_X, INTERCEPT_HEIGHTS, REGIONS
+from .settings import (
+    GOAL_X,
+    INTERCEPT_X,
+    INTERCEPT_HEIGHTS,
+    REGIONS,
+    CURRICULUM_EMA,
+    SHOT_START_X,
+    SHOT_INTERCEPT_TIME,
+)
 
 
 def reset(env, env_ids=None):
@@ -20,11 +28,22 @@ def reset(env, env_ids=None):
             env.episode_length_buf[ids].float().mean() * env.step_dt
         )
     # The original curriculum is based on episode length, not save rate.
+    # Upstream reads only the episodes resetting at the update step; with few
+    # envs that flips the level (and reward multipliers) between 0 and 3, so
+    # use an EMA over all finished episodes instead.
+    lengths = env.episode_length_buf[ids].float()
+    lengths = lengths[lengths > 0]
+    if len(lengths):
+        if s.episode_length_ema < 0:
+            s.episode_length_ema = lengths.mean().item()
+        else:
+            keep = (1.0 - CURRICULUM_EMA) ** len(lengths)
+            s.episode_length_ema = (
+                keep * s.episode_length_ema + (1 - keep) * lengths.mean().item()
+            )
     if not s.settings.play and env.common_step_counter - s.last_step_counter > 500:
         s.startstep = 50 - random.randint(3, 10)
-        s.curriculumupdate = int(
-            env.episode_length_buf[ids].float().mean().item() / 50.0
-        )
+        s.curriculumupdate = int(max(s.episode_length_ema, 0.0) / 50.0)
         delta = 0.3 * s.curriculumupdate
         for low, high in ((0, 1), (2, 3)):
             s.command_ranges[:, low] = (s.command_ranges[:, low] - delta).clamp(
@@ -158,7 +177,10 @@ def sample_region_shots(bounds, region_ids=None, max_attempts=512):
             return start, velocity, target
         r = torch.rand((len(pending), 6), device=bounds.device)
         b = bounds[pending]
-        p = torch.stack((1.5 + r[:, 0], -1 + 2 * r[:, 1], 0.15 + 0.65 * r[:, 2]), -1)
+        x0, x1 = SHOT_START_X
+        p = torch.stack(
+            (x0 + (x1 - x0) * r[:, 0], -1 + 2 * r[:, 1], 0.15 + 0.65 * r[:, 2]), -1
+        )
         end = torch.stack(
             (
                 torch.full_like(r[:, 0], GOAL_X),
@@ -167,7 +189,8 @@ def sample_region_shots(bounds, region_ids=None, max_attempts=512):
             ),
             -1,
         )
-        ti = 0.7 + 0.2 * r[:, 5]
+        t0, t1 = SHOT_INTERCEPT_TIME
+        ti = t0 + (t1 - t0) * r[:, 5]
         vx = (INTERCEPT_X - p[:, 0]) / ti
         total = (GOAL_X - p[:, 0]) / vx
         v = (end - p) / total[:, None]

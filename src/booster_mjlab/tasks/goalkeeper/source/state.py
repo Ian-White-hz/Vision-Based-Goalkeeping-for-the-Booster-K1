@@ -9,13 +9,13 @@ import random
 import torch
 from mjlab.utils.lab_api.math import quat_apply_inverse
 from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
-from .vendor.rewards import SourceRewards
+from .k1_rewards import K1Rewards
 from .jump_state import JumpState
-from .settings import INTERCEPT_X
+from .settings import INTERCEPT_X, BALL_VISIBLE_X
 from .settings import REGIONS, BOUNDS, EVAL_REGIONS, REWARD_SCALES, SourceSettings
 
 
-class SourceState(SourceRewards):
+class SourceState(K1Rewards):
     def __init__(self, env, settings):
         self.env, self.settings = env, settings
         self.device, self.num_envs, self.dt = env.device, env.num_envs, env.step_dt
@@ -46,6 +46,7 @@ class SourceState(SourceRewards):
         )[self.end_regions].clone()
         self.command_bound = torch.tensor(BOUNDS, device=self.device)[self.end_regions]
         self.curriculumupdate, self.curriculumsigma = 0.0, 5.0
+        self.episode_length_ema = -1.0
         self.last_step_counter, self.updated_step, self.obs_step = 0, -1, -1
         self.startstep = 50 - random.randint(3, 10)
         self.catchstep = torch.full(
@@ -153,9 +154,9 @@ class SourceState(SourceRewards):
         self.refresh()
         self.catchstep -= 1
         self.actions = self.env.action_manager.action.clamp(-100, 100).clone()
-        x = self.ball_states[:, 0] - self.env_origins[:, 0]
-        changed = self.ball_states[:, 7] - self.ball_vel
-        approach = (x < 0.5) & (x > 0.1) & (changed < 2.0)
+        x = self._ball_x()
+        deflected = self._deflected()
+        approach = (x < 0.5) & (x > 0.1) & ~deflected
         self.end_target[approach] = self.ball_states[approach, :3]
         self.end_target[:, 0] = torch.maximum(
             torch.minimum(self.end_target[:, 0], self.env_origins[:, 0] + 1.0),
@@ -181,7 +182,7 @@ class SourceState(SourceRewards):
                     else 1.0
                 )
             self.rewards[name] = value * multiplier
-        near = (x <= 1.5) & (x >= 0) & (changed < 2.0)
+        near = (x <= self.phase1_x) & (x >= self.behind_x) & ~deflected
         fresh_near = near & (self.first_near < 0)
         self.first_near[fresh_near] = 50 - self.catchstep[fresh_near]
         self.guide_steps += near.long()
@@ -236,7 +237,7 @@ class SourceState(SourceRewards):
         p = self.ball_local
         flying = (
             (p[:, 0] > 0.05)
-            & (p[:, 0] < 3.4)
+            & (p[:, 0] < BALL_VISIBLE_X)
             & (p[:, 1] > -2)
             & (p[:, 1] < 2)
             & (p[:, 2] < 1.8)
