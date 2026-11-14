@@ -26,6 +26,9 @@ from .settings import (
     GOAL_X,
     BALL_RADIUS,
     SIM_DT,
+    ELBOW_PITCH_DAMPING,
+    TRUNK_PAYLOAD_KG,
+    TRUNK_COM_OFFSET_M,
 )
 from .state import observation, reward, termination
 from .events import reset, perturb
@@ -48,20 +51,27 @@ class SourceRunnerCfg(RslRlOnPolicyRunnerCfg):
 
 def env_cfg(num_envs=6144, play=False, randomize=True):
     robot = get_k1_robot_cfg()
-    robot.articulation = replace(
-        robot.articulation,
-        actuators=tuple(
-            SourceMotorCfg(
-                target_names_expr=a.target_names_expr,
-                effort_limit=a.effort_limit,
-                stiffness=a.stiffness,
-                damping=a.damping,
-                motor=a.motor,
-                armature=a.armature,
+    actuators = []
+    for a in robot.articulation.actuators:
+        groups = [(a.target_names_expr, a.damping)]
+        if ".*_Elbow_.*" in a.target_names_expr:
+            # Split the arm group so only elbow pitch gets the stable damping.
+            rest = tuple(
+                ".*_Elbow_Yaw" if e == ".*_Elbow_.*" else e for e in a.target_names_expr
             )
-            for a in robot.articulation.actuators
-        ),
-    )
+            groups = [(rest, a.damping), ((".*_Elbow_Pitch",), ELBOW_PITCH_DAMPING)]
+        for names, damping in groups:
+            actuators.append(
+                SourceMotorCfg(
+                    target_names_expr=names,
+                    effort_limit=a.effort_limit,
+                    stiffness=a.stiffness,
+                    damping=damping,
+                    motor=a.motor,
+                    armature=a.armature,
+                )
+            )
+    robot.articulation = replace(robot.articulation, actuators=tuple(actuators))
     scene = make_goalkeeper_scene_cfg(
         robot,
         settings=FullGoalSettings(
@@ -136,7 +146,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
                     mode="startup",
                     params={
                         "asset_cfg": SceneEntityCfg("robot", body_names=("Trunk",)),
-                        "ranges": (-5.0, 10.0),
+                        "ranges": TRUNK_PAYLOAD_KG,
                         "operation": "add",
                     },
                 ),
@@ -156,7 +166,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
                     mode="startup",
                     params={
                         "asset_cfg": SceneEntityCfg("robot", body_names=("Trunk",)),
-                        "ranges": (-0.1, 0.1),
+                        "ranges": (-TRUNK_COM_OFFSET_M, TRUNK_COM_OFFSET_M),
                     },
                 ),
                 "source_friction": EventTermCfg(

@@ -41,6 +41,16 @@ DEFLECT_MIN = 0.5
 BEHIND_X = -0.1
 # EMA weight per finished episode for the episode-length curriculum signal.
 CURRICULUM_EMA = 0.01
+# Elbow pitch rotates about the forearm axis (I ~ .0015 kg m^2 incl. armature).
+# The source PD is explicit at SIM_DT, stable only for kd*dt/I < 2; booster-lab
+# kd=1 gives ~3.3 and the torque chatters between +/-14 Nm. 0.3 is about
+# critical damping (2*sqrt(kp*I) ~ .25) for kp=10.
+ELBOW_PITCH_DAMPING = 0.3
+# Startup randomization scaled to K1 (19.8 kg, trunk ~6.5 kg). Upstream G1
+# values (-5..+10 kg, +/-.1 m COM) gave trunk 1.5..16.5 kg and 59% falls for a
+# deterministic policy (7% without randomization).
+TRUNK_PAYLOAD_KG = (-1.0, 3.0)
+TRUNK_COM_OFFSET_M = 0.03
 # Ball-centre (y_min, y_max, z_min, z_max) at the ROBOT plane x=INTERCEPT_X.
 # Order: mid L/R, high L/R, low L/R. The goal plane only has to be scored on
 # (inside posts, under bar); low shots may bounce between robot and goal.

@@ -113,3 +113,30 @@ Evidence from shotB (512 envs, upstream noise settings, 1000 iterations, old goa
 test asserts both values. A 12-env CLI smoke run wrote them to `params/agent.yaml`,
 and the checkpoint std was 0.500.
 
+## Elbow PD stability and K1-scaled randomization
+
+Evidence from `source_k1_goal04_std05` model_2000 (512 envs, 2000 iterations), training
+conditions (randomized, stochastic actions), per 150 steps, task x0.6 / AMP x0.4:
+- Positive 48, negative -21. eereach 24.2 (15.3 after the ball passed, where the 2x
+  behind-phase factor rewards hands near a frozen target), AMP 8.7, stopball 1.4,
+  success 2.6. Zero action still collects eereach 19.
+- torque_limits -11.7 (zero action -13). Elbow pitch was at 97% of its 14 Nm limit
+  even at the default pose. Elbow pitch turns about the forearm axis
+  (I ~ .0015 kg m^2 with armature). The source PD is explicit at 5 ms, and kd=1
+  gives kd*dt/I ~ 3.3, above the stability bound of 2. The torque chattered between the limits.
+- Episodes: 64% ended in a fall (deterministic, no pushes: 59%; randomization off: 7%).
+  92% of falls happened after the ball had passed; almost all were pitch falls.
+  Fall rate rose with trunk mass by quartile: .23/.36/.47/.60. Upstream payload -5..+10 kg
+  on a ~6.5 kg K1 trunk gave 1.5..16.5 kg.
+- Mean episode return: kept out & stood 39, goal & stood 29, fell ~9. Not falling
+  was worth 20..30 and a save about 10, so standing still was the safe policy.
+
+Changes: `ELBOW_PITCH_DAMPING`=0.3 (about critical damping for kp=10; elbow yaw and
+shoulders keep kd=1). Peak elbow |tau|/limit at default pose is now .005 instead of 1.0.
+`TRUNK_PAYLOAD_KG`=(-1, 3) and `TRUNK_COM_OFFSET_M`=.03. Link-mass scale, friction,
+restitution and pushes are unchanged. `test_goalkeeper_source_k1_stability.py` checks
+the gains, the absence of elbow saturation and the randomization ranges.
+Deployment note: this is a fix for simulation discretization. The hardware motor driver runs its PD
+loop much faster, so it does not imply kd=0.3 on the robot.
+Old checkpoints were trained with the chattering elbows; retrain from scratch.
+Reward changes (behind-phase eereach, stopball scale) are deferred to a separate ablation.
