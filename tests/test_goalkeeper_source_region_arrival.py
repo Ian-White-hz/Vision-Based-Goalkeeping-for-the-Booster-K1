@@ -12,26 +12,29 @@ from booster_mjlab.tasks.goalkeeper.source.settings import (
     GOAL_WIDTH,
     GOAL_HEIGHT,
     GOAL_X,
-    INTERCEPT_HEIGHTS,
     INTERCEPT_X,
     SHOT_INTERCEPT_TIME,
+    BALL_RADIUS,
+    SIM_DT,
 )
 from booster_mjlab.tasks.goalkeeper.source.state import state
 
 torch.set_num_threads(1)
 torch.manual_seed(42)
-bounds = torch.tensor(REGIONS).repeat(100, 1)
-starts, velocities, targets = sample_region_shots(bounds)
+ids = torch.arange(600) % 6
+bounds = torch.tensor(REGIONS)[ids]
+starts, velocities, targets = sample_region_shots(bounds, ids)
 spec = ball_spec()
-spec.option.timestep = 0.005
+spec.option.timestep = SIM_DT
 spec.worldbody.add_geom(
     type=mujoco.mjtGeom.mjGEOM_PLANE, size=[20, 20, 0.1], friction=[0, 0, 0]
 )
 m = spec.compile()
 d = mujoco.MjData(m)
-assert bounds[:, :2].abs().max() + 0.1 < GOAL_WIDTH / 2
-assert bounds[:, 3].max() + 0.1 < GOAL_HEIGHT
-errors = []
+# Keeper stands in front of the goal: heels (~-0.1) clear of the goal line.
+assert GOAL_X <= -0.3
+assert bounds[:, 2].min() > BALL_RADIUS
+errors, bounced = [], np.zeros(6)
 for shot_id, (start, velocity, target, bound) in enumerate(
     zip(starts, velocities, targets, bounds)
 ):
@@ -39,33 +42,42 @@ for shot_id, (start, velocity, target, bound) in enumerate(
     d.qpos[:3] = start.numpy()
     d.qpos[3] = 1
     d.qvel[:3] = velocity.numpy()
-    crossed = False
-    for _ in range(250):
+    at_robot = at_goal = touched = False
+    for _ in range(300):
         previous = d.qpos[:3].copy()
         mujoco.mj_step(m, d)
-        assert d.ncon == 0, "Ground contact before goal crossing"
-        if previous[0] > INTERCEPT_X >= d.qpos[0]:
+        if d.ncon:
+            assert at_robot, "Ground contact before robot plane"
+            touched = True
+        if not at_robot and previous[0] > INTERCEPT_X >= d.qpos[0]:
             f = (INTERCEPT_X - previous[0]) / (d.qpos[0] - previous[0])
-            z = previous[2] + f * (d.qpos[2] - previous[2])
-            lo, hi = INTERCEPT_HEIGHTS[shot_id % 6]
-            assert lo <= z <= hi, (z, lo, hi)
-            assert (
-                SHOT_INTERCEPT_TIME[0] - 0.005
-                <= d.time - 0.005 + f * 0.005
-                <= SHOT_INTERCEPT_TIME[1] + 0.005
-            )
-        if d.qpos[0] <= GOAL_X:
-            f = (GOAL_X - previous[0]) / (d.qpos[0] - previous[0])
             p = previous + f * (d.qpos[:3] - previous)
             assert bound[0] <= p[1] <= bound[1] and bound[2] <= p[2] <= bound[3], (
                 p,
                 bound,
             )
+            t = d.time - SIM_DT + f * SIM_DT
+            assert (
+                SHOT_INTERCEPT_TIME[0] - SIM_DT <= t <= SHOT_INTERCEPT_TIME[1] + SIM_DT
+            )
             errors.append(np.linalg.norm(p - target.numpy()))
-            crossed = True
+            at_robot = True
+        if previous[0] > GOAL_X >= d.qpos[0]:
+            f = (GOAL_X - previous[0]) / (d.qpos[0] - previous[0])
+            p = previous + f * (d.qpos[:3] - previous)
+            # Would score: ball fully inside posts and under the bar.
+            assert abs(p[1]) <= GOAL_WIDTH / 2 - BALL_RADIUS, p
+            assert p[2] <= GOAL_HEIGHT - BALL_RADIUS, p
+            bounced[shot_id % 6] += touched
+            at_goal = True
             break
-    assert crossed
-print("600/600 actual goal crossings inside assigned region; max error:", max(errors))
+    assert at_robot and at_goal
+assert max(errors) < 0.005, max(errors)
+print(
+    "600/600 robot-plane crossings inside assigned region and goal mouth; "
+    f"max target error {max(errors):.4f} m; bounce-before-goal per region "
+    f"{(bounced / 100).round(2).tolist()}"
+)
 cfg = env_cfg(6, play=True, randomize=False)
 e = ManagerBasedRlEnv(cfg, device="cpu")
 try:

@@ -1,4 +1,4 @@
-"""Source reward constants with explicit K1 goal-plane region adaptations."""
+"""Source reward constants with explicit K1 robot-plane region adaptations."""
 
 from dataclasses import dataclass
 
@@ -10,12 +10,19 @@ MOTION_NAMES = (
     "leftstep",
     "rightstep",
 )
-# Compact K1 training goal; dimensions are a task choice, not a measured
-# dynamic reach guarantee. Ball-centre bounds leave radius clearance.
+# Compact K1 training goal; dimensions are a task choice. Standing arm-only
+# hand reach is z<=1.08 m and |y|<=.50 m (mid/high), |y|<=.30 m (low band), so
+# the 1.1 m bar needs no jump while corners need a step or lean.
 GOAL_WIDTH = 1.5
 GOAL_HEIGHT = 1.1
-GOAL_X = -0.1
+# Goal line sits behind the robot (root at x=0, heels at about -0.1) so the
+# keeper stands in front of the goal. Visual only; no collision.
+GOAL_X = -0.4
+# Robot plane where regions and reward targets are defined.
 INTERCEPT_X = 0.0
+BALL_RADIUS = 0.1
+# Physics step; the sampler cancels semi-implicit Euler gravity drift for it.
+SIM_DT = 0.005
 # Shot launch: origin x range and time to reach the robot plane. 3..4.5 m with
 # .6...8 s gives |vx| ~4.4..6.4 m/s and 25..40 deg descent (10-90%); the
 # previous 1.5..2.5 m / .7...9 s produced 47..62 deg lobs.
@@ -27,27 +34,23 @@ BALL_VISIBLE_X = 4.8
 # Ball-phase thresholds rescaled for K1 shots (see k1_rewards.py).
 # Upstream: far phase x>1.5, deflection dvx>2 (~36% of median |vx|), behind
 # x<0. With K1 shots at |vx|~5.3 m/s, x=1.5 again leaves ~.28 s of reach phase.
+# Behind line is just past the robot body, independent of the goal line.
 PHASE1_X = 1.5
 DEFLECT_RATIO = 0.4
 DEFLECT_MIN = 0.5
-BEHIND_X = GOAL_X
+BEHIND_X = -0.1
 # EMA weight per finished episode for the episode-length curriculum signal.
 CURRICULUM_EMA = 0.01
-INTERCEPT_HEIGHTS = (
-    (0.4, 0.75),
-    (0.4, 0.75),
-    (0.8, 1.05),
-    (0.8, 1.05),
-    (0.15, 0.35),
-    (0.15, 0.35),
-)
+# Ball-centre (y_min, y_max, z_min, z_max) at the ROBOT plane x=INTERCEPT_X.
+# Order: mid L/R, high L/R, low L/R. The goal plane only has to be scored on
+# (inside posts, under bar); low shots may bounce between robot and goal.
 REGIONS = (
-    (0.05, 0.55, 0.3, 0.65),
-    (-0.55, -0.05, 0.3, 0.65),
-    (0.05, 0.55, 0.65, 0.9),
-    (-0.55, -0.05, 0.65, 0.9),
-    (0.05, 0.55, 0.12, 0.3),
-    (-0.55, -0.05, 0.12, 0.3),
+    (0.05, 0.55, 0.4, 0.75),
+    (-0.55, -0.05, 0.4, 0.75),
+    (0.05, 0.55, 0.8, 1.05),
+    (-0.55, -0.05, 0.8, 1.05),
+    (0.05, 0.55, 0.15, 0.35),
+    (-0.55, -0.05, 0.15, 0.35),
 )
 BOUNDS = REGIONS
 EVAL_REGIONS = REGIONS

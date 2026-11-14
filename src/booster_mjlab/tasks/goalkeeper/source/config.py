@@ -18,7 +18,15 @@ from booster_mjlab.tasks.goalkeeper.config.k1.rl_cfg import (
     booster_k1_goalkeeper_ppo_runner_cfg,
 )
 from booster_mjlab.rl.config import RslRlOnPolicyRunnerCfg
-from .settings import SourceSettings, REWARD_SCALES, GOAL_WIDTH, GOAL_HEIGHT, GOAL_X
+from .settings import (
+    SourceSettings,
+    REWARD_SCALES,
+    GOAL_WIDTH,
+    GOAL_HEIGHT,
+    GOAL_X,
+    BALL_RADIUS,
+    SIM_DT,
+)
 from .state import observation, reward, termination
 from .events import reset, perturb
 from .actions import SourceActionCfg, SourceMotorCfg
@@ -57,7 +65,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
     scene = make_goalkeeper_scene_cfg(
         robot,
         settings=FullGoalSettings(
-            ball_radius=0.1,
+            ball_radius=BALL_RADIUS,
             ball_mass=0.1,
             goal_height=GOAL_HEIGHT,
             goal_width=GOAL_WIDTH,
@@ -175,7 +183,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
                 ),
             }
         )
-    cfg.sim.mujoco.timestep = 0.005
+    cfg.sim.mujoco.timestep = SIM_DT
     cfg.sim.njmax = 1024
     cfg.viewer.distance = 4.0
     cfg.viewer.elevation = 25.0
@@ -195,5 +203,10 @@ def runner_cfg():
     cfg.actor.hidden_dims = (512, 256, 256)
     cfg.critic.hidden_dims = (512, 256, 256)
     cfg.actor.activation = cfg.critic.activation = "elu"
+    # Exploration noise below upstream (std 1.0, entropy .01). With 512 envs
+    # (1/12 of upstream) arm std grew 1.0->1.23 and leg noise of ~.2 rad per
+    # step caused frequent training falls, so legs learned to stay still.
+    cfg.actor.distribution_cfg = {**cfg.actor.distribution_cfg, "init_std": 0.5}
+    cfg.algorithm.entropy_coef = 0.003
     cfg.actor.obs_normalization = cfg.critic.obs_normalization = False
     return cfg

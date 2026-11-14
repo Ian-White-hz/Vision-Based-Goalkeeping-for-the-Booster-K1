@@ -4,7 +4,7 @@ import mjlab  # noqa: F401
 import torch
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.rl import RslRlVecEnvWrapper
-from booster_mjlab.tasks.goalkeeper.source.config import env_cfg
+from booster_mjlab.tasks.goalkeeper.source.config import env_cfg, runner_cfg
 from booster_mjlab.tasks.goalkeeper.source.state import state
 from booster_mjlab.tasks.goalkeeper.source.settings import (
     PHASE1_X,
@@ -18,6 +18,11 @@ from booster_mjlab.tasks.goalkeeper.source.settings import (
 from booster_mjlab.tasks.goalkeeper.source.events import sample_region_shots
 
 torch.set_num_threads(1)
+
+# Reduced exploration noise for the small-batch K1 setup.
+_rcfg = runner_cfg()
+assert _rcfg.actor.distribution_cfg["init_std"] == 0.5
+assert _rcfg.algorithm.entropy_coef == 0.003
 
 # Shot shape: launches are visible to the actor and arrive as flat-ish shots.
 assert BALL_VISIBLE_X > SHOT_START_X[1] + 0.2

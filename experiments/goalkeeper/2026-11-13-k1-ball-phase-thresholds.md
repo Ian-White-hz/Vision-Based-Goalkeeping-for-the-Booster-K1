@@ -23,11 +23,10 @@ exceeded |vx|. Cause: 1.5..2.5 m launch distance with .7...9 s to arrive. Each
 control step drops the ball ~7 cm near the robot, and a 10 cm hand x error is
 ~14 cm of height error. Upstream descent is about 20..50 deg.
 
-The robot standing on the goal line (goal x=-0.1) is not a training defect: the goal
-is visual only (no collision, not read by any reward), and upstream ball endpoints
-are also .1...6 m behind the robot. Moving the goal back to -0.5 under the
-current dual goal-plane/robot-plane region constraints makes low regions infeasible
-(0% sampler acceptance), so it stays at -0.1.
+Keeper position: the robot stood on the goal line (goal x=-0.1, heels at about -0.1).
+Regions were defined at the goal plane AND intercept heights at the robot plane;
+with descending shots, that dual constraint made a goal further back infeasible
+for low regions (0% acceptance at -0.5).
 
 ## Changes
 
@@ -36,6 +35,23 @@ Shots (option B): `SHOT_START_X`=3..4.5 m, `SHOT_INTERCEPT_TIME`=.6...8 s. Analy
 Reaction time is ~0.1 s shorter than before. High regions have lower rejection-sampler
 acceptance (~51%), which the 512-attempt sampler absorbs. Actor ball visibility
 cutoff `BALL_VISIBLE_X` raised from 3.4 to 4.8 m so launches are not hidden.
+
+Regions are now ball-centre rectangles at the ROBOT plane x=0, with the old intercept
+heights as z ranges: mid .4...75, high .8..1.05, low .15...35 m, y +/-[.05,.55].
+The goal plane only has to be scored on (inside posts and under the bar, with ball
+radius and a 3 cm margin), and bounces between robot and goal are allowed. Goal line
+moved to `GOAL_X`=-0.4, about 0.3 m behind the heels. The sampler aims directly at
+the robot-plane point and adds g*SIM_DT/2 to vz, which exactly cancels MuJoCo's
+semi-implicit Euler drop (measured -g*dt*t/2 before compensation, ~1e-15 after),
+so the reward target equals the simulated crossing. `BEHIND_X` is decoupled from
+the goal and stays at -0.1, just past the robot body.
+
+Goal size kept at 1.5 x 1.1 m. Standing arm-only hand reach (kinematic sweep of
+4 arm joints): z<=1.08 m; |y|<=.50 m in the mid/high bands and <=.30 m in the low
+band. With a 0.1 m ball radius, the bar is reachable without jumping. The mid/high
+corners (ball centre |y|<=.55) are at the edge of reach; low corners need a step or
+lean. Goal width/robot height is about 1.6, compared with about 2.7 for the upstream G1 task, so
+this is a compact, easier goal. Widen it later as a curriculum.
 
 `source/k1_rewards.py` overrides eereach, stopball and the four post* terms with
 threshold attributes. Formulas are unchanged. `vendor/` is untouched. With the new shot
@@ -46,7 +62,7 @@ returns to 1.5. Deflection and behind thresholds are still needed.
 | --- | --- | --- |
 | far phase | x > 1.5 | `PHASE1_X`=1.5 (attribute; same value under new shots) |
 | deflection | dvx > 2 | dvx > max(0.4 * abs(vx0), 0.5) |
-| behind / deflection line | x < 0 / x > 0 | `BEHIND_X` = `GOAL_X` = -0.1 |
+| behind / deflection line | x < 0 / x > 0 | `BEHIND_X` = -0.1 (goal line now -0.4) |
 | curriculum signal | batch mean length | EMA over finished episodes (weight 0.01 per episode; first batch initialises) |
 
 The EMA is saved in checkpoints and logged as `Train/curriculum_episode_length_ema`.
@@ -61,8 +77,10 @@ Older checkpoints resume with the sentinel, so the first finished batch initiali
   the one-shot reward, the behind line, the far/near phase switch, and EMA smoothing.
 - Randomization and small-jump tests pass. Ruff passes.
 
-- Region arrival: 600/600 MuJoCo goal crossings inside the assigned region, max
-  error .020 m; robot-plane timing asserted within `SHOT_INTERCEPT_TIME`.
+- Region arrival (rewritten): 600 shots in MuJoCo. Every robot-plane crossing is
+  inside its region and within `SHOT_INTERCEPT_TIME`, with no ground contact before
+  the robot plane. Target error < 1e-4 m. Every goal-plane crossing is inside the
+  goal mouth. Bounce-before-goal fraction: low regions ~1.0, region 1 .06, others 0.
 - Threshold test also asserts median descent < 40 deg, 90th percentile < 48 deg,
   median |vx| > 4.5, and visibility above the launch range.
 
@@ -79,3 +97,19 @@ The proxy now tracks touches but over-credits by about 10 pp: some deflections s
 enter the goal. Report "ball kept out" as the outcome metric, not the proxy.
 Old checkpoints load but were trained on lobs; retrain from scratch. No training
 result yet; this is not a learned-policy claim.
+
+## Exploration noise
+
+Evidence from shotB (512 envs, upstream noise settings, 1000 iterations, old goal at -0.1):
+- Arm action std rose 1.06 -> 1.23 and leg std stayed .82..87. Upstream's converged
+  G1 checkpoint (iteration 25,600, 6144 envs) has shoulder/elbow std ~.4.
+- Training episode-length EMA was 117/150 steps (frequent falls under noise).
+- Frozen eval was flat from 400 to 1000 iterations: ball kept out 34% -> 34%, falls 7% -> 15%.
+  Hands moved ~0.5 m toward targets, but root lateral motion was 8 cm, with no steps
+  or jumps. High-band balls missed by .25..30 m although standing arm-only reach covers them.
+
+`runner_cfg()` for the source task now sets `init_std` 0.5 (was 1.0) and `entropy_coef`
+.003 (was .01). The shared K1 goalkeeper `rl_cfg.py` is unchanged. A threshold
+test asserts both values. A 12-env CLI smoke run wrote them to `params/agent.yaml`,
+and the checkpoint std was 0.500.
+

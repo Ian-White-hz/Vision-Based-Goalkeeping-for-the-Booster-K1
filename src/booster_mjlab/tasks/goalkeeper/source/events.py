@@ -5,9 +5,11 @@ import torch
 from .state import state
 from .settings import (
     GOAL_X,
+    GOAL_WIDTH,
+    GOAL_HEIGHT,
     INTERCEPT_X,
-    INTERCEPT_HEIGHTS,
-    REGIONS,
+    SIM_DT,
+    BALL_RADIUS,
     CURRICULUM_EMA,
     SHOT_START_X,
     SHOT_INTERCEPT_TIME,
@@ -92,11 +94,8 @@ def reset(env, env_ids=None):
     start, velocity, target = sample_region_shots(
         s.command_ranges[ids], s.end_regions[ids]
     )
-    # Reward target is the actual ballistic crossing at the robot plane.
-    t = (INTERCEPT_X - start[:, 0]) / velocity[:, 0]
-    intercept = start + velocity * t[:, None]
-    intercept[:, 2] -= 0.5 * 9.81 * t.square()
-    s.end_target[ids] = intercept + env.scene.env_origins[ids]
+    # Reward target is the simulated ballistic crossing at the robot plane.
+    s.end_target[ids] = target + env.scene.env_origins[ids]
     ball = torch.zeros((len(ids), 13), device=env.device)
     ball[:, :3] = start + env.scene.env_origins[ids]
     ball[:, 3] = 1.0
@@ -154,20 +153,23 @@ def perturb(env, env_ids=None):
 
 
 def sample_region_shots(bounds, region_ids=None, max_attempts=512):
-    """Reject shots violating either goal bounds or robot-plane constraints."""
+    """Aim at a point in the robot-plane region; reject shots that would miss goal.
+
+    Returns launch position, velocity and the robot-plane target (x=INTERCEPT_X).
+    The launch vz includes +g*SIM_DT/2, which exactly cancels MuJoCo's
+    semi-implicit Euler drop, so the simulated crossing matches the target.
+    """
     n = len(bounds)
-    if region_ids is None:
-        reference = torch.tensor(REGIONS, device=bounds.device, dtype=bounds.dtype)
-        match = (bounds[:, None] == reference[None]).all(-1)
-        if not match.any(-1).all():
-            raise ValueError("Explicit region_ids required for custom bounds")
-        region_ids = match.long().argmax(-1)
-    heights = torch.tensor(INTERCEPT_HEIGHTS, device=bounds.device)[region_ids]
+    if region_ids is not None and len(region_ids) != n:
+        raise ValueError("region_ids must match bounds")
     if (
         not torch.isfinite(bounds).all()
         or ((bounds[:, [1, 3]] - bounds[:, [0, 2]]) <= 0.08).any()
     ):
         raise ValueError("Invalid region bounds")
+    if (bounds[:, 2] < BALL_RADIUS).any():
+        raise ValueError("Region below ball radius")
+    g = 9.81
     start = torch.empty((n, 3), device=bounds.device)
     velocity = torch.empty_like(start)
     target = torch.empty_like(start)
@@ -181,9 +183,9 @@ def sample_region_shots(bounds, region_ids=None, max_attempts=512):
         p = torch.stack(
             (x0 + (x1 - x0) * r[:, 0], -1 + 2 * r[:, 1], 0.15 + 0.65 * r[:, 2]), -1
         )
-        end = torch.stack(
+        aim = torch.stack(
             (
-                torch.full_like(r[:, 0], GOAL_X),
+                torch.full_like(r[:, 0], INTERCEPT_X),
                 b[:, 0] + 0.04 + r[:, 3] * (b[:, 1] - b[:, 0] - 0.08),
                 b[:, 2] + 0.04 + r[:, 4] * (b[:, 3] - b[:, 2] - 0.08),
             ),
@@ -191,14 +193,15 @@ def sample_region_shots(bounds, region_ids=None, max_attempts=512):
         )
         t0, t1 = SHOT_INTERCEPT_TIME
         ti = t0 + (t1 - t0) * r[:, 5]
-        vx = (INTERCEPT_X - p[:, 0]) / ti
-        total = (GOAL_X - p[:, 0]) / vx
-        v = (end - p) / total[:, None]
-        v[:, 2] += 0.5 * 9.81 * total
-        zi = p[:, 2] + v[:, 2] * ti - 0.5 * 9.81 * ti.square()
-        # Integration margin for dt=.005 semi-implicit gravity.
-        valid = (zi >= heights[pending, 0] + 0.03) & (zi <= heights[pending, 1] - 0.02)
+        v = (aim - p) / ti[:, None]
+        v[:, 2] += 0.5 * g * ti + 0.5 * g * SIM_DT
+        # Would-score check at the goal plane (analytic; ground bounce allowed).
+        tg = (GOAL_X - p[:, 0]) / v[:, 0]
+        yg = p[:, 1] + v[:, 1] * tg
+        zg = p[:, 2] + (v[:, 2] - 0.5 * g * SIM_DT) * tg - 0.5 * g * tg.square()
+        half = GOAL_WIDTH / 2 - BALL_RADIUS - 0.03
+        valid = (yg.abs() <= half) & (zg <= GOAL_HEIGHT - BALL_RADIUS - 0.03)
         ids = pending[valid]
-        start[ids], velocity[ids], target[ids] = p[valid], v[valid], end[valid]
+        start[ids], velocity[ids], target[ids] = p[valid], v[valid], aim[valid]
         pending = pending[~valid]
     raise RuntimeError(f"No feasible region shots for {len(pending)} environments")
