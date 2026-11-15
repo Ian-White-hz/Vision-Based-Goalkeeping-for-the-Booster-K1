@@ -140,3 +140,22 @@ Deployment note: this is a fix for simulation discretization. The hardware motor
 loop much faster, so it does not imply kd=0.3 on the robot.
 Old checkpoints were trained with the chattering elbows; retrain from scratch.
 Reward changes (behind-phase eereach, stopball scale) are deferred to a separate ablation.
+
+## AMP without legs and smaller pushes (quick ablation)
+
+Evidence from `source_k1_elbowfix_dr` model_1000. Training-condition falls fell to 26%, and torque_limits to -0.5.
+- Ball hits do not cause the falls. Deterministic fall rate was 27% with a touch and 30% without.
+  The median ball impulse was 0.26 N s, about 1 cm/s of robot velocity, and the median fall came 43 steps after the touch.
+- Falls are slow backward pitch topples after the ball has passed, which start about 60 steps
+  before termination. Fall rate: 28% in training conditions, 12% without pushes, 1% without randomization.
+  By trunk-COM-x quartile (back to front) it was .23/.14/.06/.02; by foot-friction quartile, .04 to .17.
+- Static COM in the foot frame (sole -.066..+.109 m): default pose +.038, policy stance
+  -.018, expert clip medians -.046..-.082 (step clips behind the heel), and jump-clip
+  10th percentiles -.18..-.26. The retargeted K1 clips lean back, and the joint-only
+  AMP discriminator rewarded that stance (AMP was 24% of positive reward).
+
+Changes: `AMP_JOINT_IDS` = head and arms (10 joints, 20-dim window). The policy obs and
+the expert windows use the same subset, and the legs are shaped by task rewards only. `PUSH_VEL` is 0.5 m/s
+(was 1.5). Old checkpoints cannot fully resume, because the discriminator input changed from 44 to 20, but their
+policy weights still load with `load_cfg`. Proper fix if this helps: re-retarget the clips with a
+support-polygon COM constraint and restore leg AMP.

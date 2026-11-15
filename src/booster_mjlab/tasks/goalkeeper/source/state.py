@@ -11,7 +11,7 @@ from mjlab.utils.lab_api.math import quat_apply_inverse
 from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
 from .k1_rewards import K1Rewards
 from .jump_state import JumpState
-from .settings import INTERCEPT_X, BALL_VISIBLE_X
+from .settings import INTERCEPT_X, BALL_VISIBLE_X, AMP_JOINT_IDS
 from .settings import REGIONS, BOUNDS, EVAL_REGIONS, REWARD_SCALES, SourceSettings
 
 
@@ -286,7 +286,7 @@ def observation(env, kind):
     if kind == "critic":
         return s.critic().clamp(-100, 100)
     if kind == "amp":
-        return s.robot.data.joint_pos[:, s.jids]
+        return s.robot.data.joint_pos[:, s.jids][:, list(AMP_JOINT_IDS)]
     raise ValueError(kind)
 
 

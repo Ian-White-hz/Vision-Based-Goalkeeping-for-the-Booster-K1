@@ -9,9 +9,13 @@ from .vendor.actor_critic import ActorCritic
 from .vendor.amp import AMP
 from .vendor.ppo import HIMPPO
 from .vendor.normalizer import Normalizer
-from .settings import MOTION_NAMES
+from .settings import MOTION_NAMES, AMP_JOINT_IDS
 from .state import state
 from booster_mjlab.tasks.goalkeeper.amp_interfaces import GoalkeeperExpertSampler
+
+
+# Two-frame window of the AMP joint subset.
+AMP_DIM = 2 * len(AMP_JOINT_IDS)
 
 
 class SourceMotion:
@@ -63,8 +67,8 @@ class SourceRunner:
             args[k] = train_cfg[k]
         self.alg = HIMPPO(
             model,
-            amp=AMP(44, 0.4, device=device),
-            amp_normalizer=Normalizer(44),
+            amp=AMP(AMP_DIM, 0.4, device=device),
+            amp_normalizer=Normalizer(AMP_DIM),
             device=device,
             **args,
         )
@@ -72,7 +76,7 @@ class SourceRunner:
         if self.num_steps_per_env < 2:
             raise ValueError("Source PPO requires at least 2 steps")
         self.alg.init_storage(
-            env.num_envs, self.num_steps_per_env, [750], [92], [22], [44]
+            env.num_envs, self.num_steps_per_env, [750], [92], [22], [AMP_DIM]
         )
         self.last_losses = None
 
@@ -82,7 +86,7 @@ class SourceRunner:
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         sampler = GoalkeeperExpertSampler(self.cfg["dataset_root"], self.device)
         self.alg.motion_buffer = {
-            name: SourceMotion(q, fps)
+            name: SourceMotion(q[:, list(AMP_JOINT_IDS)], fps)
             for name, q, fps in zip(MOTION_NAMES, sampler._positions, sampler._fps)
         }
         if init_at_random_ep_len:

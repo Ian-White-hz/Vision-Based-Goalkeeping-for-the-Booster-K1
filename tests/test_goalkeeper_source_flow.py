@@ -11,7 +11,7 @@ from mjlab.rl import RslRlVecEnvWrapper
 from booster_mjlab.tasks.goalkeeper.source.config import env_cfg, runner_cfg
 from booster_mjlab.tasks.goalkeeper.source.state import state
 from booster_mjlab.tasks.goalkeeper.source.runner import SourceRunner
-from booster_mjlab.tasks.goalkeeper.source.settings import REWARD_SCALES
+from booster_mjlab.tasks.goalkeeper.source.settings import REWARD_SCALES, AMP_JOINT_IDS
 
 torch.set_num_threads(1)
 cfg = env_cfg(num_envs=6, randomize=False)
@@ -23,7 +23,7 @@ try:
     assert (
         obs["actor"].shape == (6, 750)
         and obs["critic"].shape == (6, 92)
-        and obs["amp"].shape == (6, 22)
+        and obs["amp"].shape == (6, len(AMP_JOINT_IDS))
     )
     s = state(env)
     assert s.end_regions.tolist() == list(range(6))

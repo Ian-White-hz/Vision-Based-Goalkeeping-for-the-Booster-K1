@@ -13,6 +13,7 @@ from .settings import (
     CURRICULUM_EMA,
     SHOT_START_X,
     SHOT_INTERCEPT_TIME,
+    PUSH_VEL,
 )
 
 
@@ -148,7 +149,7 @@ def perturb(env, env_ids=None):
     if not s.settings.play and env.common_step_counter % 750 == 0:
         r = env.scene["robot"]
         root = torch.cat((r.data.root_link_pose_w, r.data.root_link_vel_w), -1).clone()
-        root[:, 7:9] = torch.empty_like(root[:, 7:9]).uniform_(-1.5, 1.5)
+        root[:, 7:9] = torch.empty_like(root[:, 7:9]).uniform_(-PUSH_VEL, PUSH_VEL)
         r.write_root_state_to_sim(root)
 
 

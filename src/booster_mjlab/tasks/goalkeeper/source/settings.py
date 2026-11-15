@@ -51,6 +51,14 @@ ELBOW_PITCH_DAMPING = 0.3
 # deterministic policy (7% without randomization).
 TRUNK_PAYLOAD_KG = (-1.0, 3.0)
 TRUNK_COM_OFFSET_M = 0.03
+# Robot base push (uniform xy velocity, m/s, every 750 control steps). Upstream
+# G1 used 1.5; on K1 it raised deterministic falls from 12% to 28%.
+PUSH_VEL = 0.5
+# AMP discriminator inputs: indices into K1_JOINT_ORDER (head 0..1, arms 2..9).
+# Legs are excluded: the retargeted K1 expert clips put the static COM behind
+# the heel (median -.05..-.08 m in the foot frame vs. heel at -.066), and AMP
+# pulled the stance into backward falls. Legs are shaped by task rewards only.
+AMP_JOINT_IDS = tuple(range(10))
 # Ball-centre (y_min, y_max, z_min, z_max) at the ROBOT plane x=INTERCEPT_X.
 # Order: mid L/R, high L/R, low L/R. The goal plane only has to be scored on
 # (inside posts, under bar); low shots may bounce between robot and goal.
