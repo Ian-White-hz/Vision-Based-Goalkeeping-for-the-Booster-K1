@@ -99,6 +99,21 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
             reduce="netforce",
             num_slots=1,
         ),
+        # Ball contact with either arm subtree (shoulder link to hand) in any
+        # substep; gates save credit (ARM_SAVE_CREDIT).
+        ContactSensorCfg(
+            name="source_arm_ball_contact",
+            primary=ContactMatch(
+                mode="subtree",
+                entity="robot",
+                pattern=r"^(Left_Arm_1|Right_Arm_1)$",
+            ),
+            secondary=ContactMatch(mode="body", entity="ball", pattern=r"^football$"),
+            fields=("found", "force"),
+            reduce="netforce",
+            num_slots=1,
+            history_length=4,
+        ),
     )
     cfg = SourceEnvCfg(
         scene=scene,

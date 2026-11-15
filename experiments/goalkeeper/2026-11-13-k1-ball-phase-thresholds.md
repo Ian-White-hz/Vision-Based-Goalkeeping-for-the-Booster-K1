@@ -159,3 +159,47 @@ the expert windows use the same subset, and the legs are shaped by task rewards 
 (was 1.5). Old checkpoints cannot fully resume, because the discriminator input changed from 44 to 20, but their
 policy weights still load with `load_cfg`. Proper fix if this helps: re-retarget the clips with a
 support-polygon COM constraint and restore leg AMP.
+
+## Free saves: regions off the body, arm-only credit, no behind-phase reach
+
+Evidence from `source_k1_amparms_push05` model_1000 (512 envs, 1000 iterations):
+- Training-condition falls are 5%, and the episode-length EMA is 146/150. Balance is no longer the bottleneck.
+- On the same shots, with no randomization, a frozen default-pose keeper (state rewritten every step)
+  kept out 26% of balls (mid .38/.28, high .01/.00, low .41/.48). The policy kept out 36%
+  (mid .63/.56, high .02/.00, low .43/.51). Over checkpoints 200..1000 the policy rose from 28% to 36%, flat after
+  600. It only moves its arms (hands ~.4 m, root lateral 4 cm, no jumps). High-ball hands
+  stayed .33 m from the target.
+- Mid/low regions started at |y|=.05, inside the body (upstream G1: .2..1.2 m), and any
+  deflection, including by trunk or legs, gave stopball/success. The frozen keeper touched 47% of balls.
+- Reward per 150 steps: +61, of which ~45 came after the ball had passed (eereach x2
+  19.1, AMP 13, posture terms). stopball+success was 4.5. A save was worth ~+18 return and a fall ~-45.
+- Losses look healthy: value 5..10, |surrogate| ~.004, expert .01..3. Reward/total
+  has been flat at ~.40 since iteration ~250. Adaptive LR fell to 1e-4..2e-4.
+  Budget: 5.1e7 samples, versus ~1.6e10 for the upstream converged G1 checkpoint.
+
+Changes:
+- `REGIONS` mid/low |y| .15..85 (high unchanged, .05..55; it had no free saves). `GOAL_WIDTH`
+  2.0 so that robot-plane shots out to .85 m score inside the posts.
+- `ARM_SAVE_CREDIT`: stopball and the success flag need a ball contact with either arm
+  subtree (`Left_Arm_1`/`Right_Arm_1` to the hand) in any physics substep. The new contact
+  sensor `source_arm_ball_contact` has `history_length`=4, and the latch is `arm_touch`, cleared on reset.
+  A trunk, head or leg deflection still closes the save window, but without credit.
+- `BEHIND_REACH_SCALE` 0 (upstream 2): no eereach after the ball has passed or been deflected.
+- The parity test sets `arm_save_credit=False` and `behind_reach_scale=2`, and still matches upstream.
+  The new `test_goalkeeper_source_save_credit.py` uses real MuJoCo contacts: a shot at the hand is credited,
+  a shot at the trunk is deflected without credit, behind-phase eereach is 0, and reset clears the latch.
+  It also checks the region and goal geometry. The threshold test sets the latch explicitly.
+
+Measured on the new setup (same shots, frozen keeper vs. old model_1000 policy):
+
+| | kept out | save credit | arm touch |
+| --- | --- | --- | --- |
+| frozen default pose | .059 (mid .04/.09, low .11/.11) | .079 | .136 |
+| old policy (trained on old setup) | .123 | .205 | .303 |
+
+Reward composition with the old policy (stochastic, per 150 steps): behind-phase
+eereach .03 (was 19.1). AMP 17.0 is now the largest term, and stopball+success is 3.5.
+Remaining free terms: `success` still pays `(flag+1)` while the hand is within .15 m of the
+frozen target after the ball has passed (2.5 per episode), and the post* posture terms
+pay for standing still for ~2 s. These are candidates for the next ablation, together with AMP weight
+and episode length. Retrain from scratch.

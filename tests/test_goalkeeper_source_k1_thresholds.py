@@ -44,18 +44,23 @@ try:
     s.refresh()
     ox = s.env_origins[:, 0]
 
-    def place(x, vx, vx0):
+    def place(x, vx, vx0, arm=True):
         s.ball_states[:, 0] = ox + x
         s.ball_states[:, 7] = vx
         s.ball_vel[:] = vx0
         s.stop_flag.zero_()
         s.success_flag.zero_()
+        s.arm_touch[:] = arm  # threshold checks assume an arm touch
 
     # Slow K1 shot: a 1.2 m/s loss (44%) is a deflection; upstream needed >2.
     place(0.05, -1.5, -2.7)
     assert s._deflected().all() and not s._behind().logical_not().any()
     assert (s._reward_stopball() == 1).all() and (s.success_flag == 1).all()
     assert (s._reward_stopball() == 0).all()  # one-shot
+    # Same deflection without an arm touch: window closes, no credit.
+    place(0.05, -1.5, -2.7, arm=False)
+    assert (s._reward_stopball() == 0).all() and (s.success_flag == 0).all()
+    assert (s.stop_flag == 1).all()
     # Small loss (20%) is not.
     place(0.05, -2.16, -2.7)
     assert not s._deflected().any() and (s._reward_stopball() == 0).all()

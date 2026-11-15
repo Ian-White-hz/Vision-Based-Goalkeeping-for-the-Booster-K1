@@ -5,13 +5,20 @@ m/s): far phase while ball x > 1.5 m, deflection when vx rises > 2 m/s, and
 "behind" once ball x < 0. K1 shots start at x=1.5..2.5 m with vx ~ -1.7..-3.6
 m/s, so the far phase almost vanished and a deflection had to nearly stop the
 ball. Formulas are unchanged; only the thresholds are attributes. Setting
-phase1_x=1.5, deflect_ratio=0, deflect_min=2, behind_x=0 restores upstream
-exactly (used by the parity test).
+phase1_x=1.5, deflect_ratio=0, deflect_min=2, behind_x=0, arm_save_credit=False
+and behind_reach_scale=2 restores upstream exactly (used by the parity test).
 """
 
 import torch
 from .vendor.rewards import SourceRewards
-from .settings import PHASE1_X, DEFLECT_RATIO, DEFLECT_MIN, BEHIND_X
+from .settings import (
+    PHASE1_X,
+    DEFLECT_RATIO,
+    DEFLECT_MIN,
+    BEHIND_X,
+    ARM_SAVE_CREDIT,
+    BEHIND_REACH_SCALE,
+)
 
 
 class K1Rewards(SourceRewards):
@@ -19,6 +26,8 @@ class K1Rewards(SourceRewards):
     deflect_ratio = DEFLECT_RATIO
     deflect_min = DEFLECT_MIN
     behind_x = BEHIND_X
+    arm_save_credit = ARM_SAVE_CREDIT
+    behind_reach_scale = BEHIND_REACH_SCALE
 
     def _ball_x(self):
         return self.ball_states[:, 0] - self.env_origins[:, 0]
@@ -57,7 +66,7 @@ class K1Rewards(SourceRewards):
         vel_sigma = torch.where(left, 1 + 3.0 * vy.clip(0.0, 3.0), vel_sigma)
         vel_sigma = torch.where(right, 1 - 3.0 * vy.clip(-3.0, 0.0), vel_sigma)
         vel_sigma = torch.where(jump, 1 + jump_scale * vz.clip(0.0, 3.0), vel_sigma)
-        vel_sigma = torch.where(self._behind(), 2.0, vel_sigma)
+        vel_sigma = torch.where(self._behind(), self.behind_reach_scale, vel_sigma)
 
         taskrew = 1 - 1 / (
             1
@@ -73,8 +82,12 @@ class K1Rewards(SourceRewards):
         x = self._ball_x()
         changevel = self._deflected() & (x > self.behind_x)
         stopped = changevel | (x < self.behind_x)
-        rew_stop = 1.0 * (self.stop_flag == 0) * changevel
-        self.success_flag[(self.stop_flag == 0) & changevel] = 1.0
+        credited = changevel
+        if self.arm_save_credit:
+            # A deflection by trunk, head or legs still ends the save window.
+            credited = changevel & self.arm_touch
+        rew_stop = 1.0 * (self.stop_flag == 0) * credited
+        self.success_flag[(self.stop_flag == 0) & credited] = 1.0
         self.stop_flag[stopped] = 1.0
         return rew_stop
 

@@ -11,7 +11,7 @@ from mjlab.utils.lab_api.math import quat_apply_inverse
 from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
 from .k1_rewards import K1Rewards
 from .jump_state import JumpState
-from .settings import INTERCEPT_X, BALL_VISIBLE_X, AMP_JOINT_IDS
+from .settings import INTERCEPT_X, BALL_VISIBLE_X, AMP_JOINT_IDS, ARM_TOUCH_FORCE
 from .settings import REGIONS, BOUNDS, EVAL_REGIONS, REWARD_SCALES, SourceSettings
 
 
@@ -60,6 +60,8 @@ class SourceState(K1Rewards):
         self.end_target, self.ball_last = z(3), z(3)
         self.ball_vel, self.dist, self.stop_flag, self.success_flag = z(), z(), z(), z()
         self.has_in_air = z().bool()
+        # Latched per episode: an arm subtree touched the ball (see config sensor).
+        self.arm_touch = z().bool()
         self.jump_state = JumpState(self.num_envs, self.device)
         self.actions, self.last_actions, self.last_last_actions = z(22), z(22), z(22)
         self.last_dof_vel = z(22)
@@ -141,6 +143,9 @@ class SourceState(K1Rewards):
         self.projected_gravity = r.projected_gravity_b
         self.torques = r.qfrc_actuator[:, self.jids]
         self.contact_forces = torch.zeros_like(r.body_link_pos_w)
+        arm = self.env.scene["source_arm_ball_contact"].data.force_history
+        if arm is not None:
+            self.arm_touch |= arm.norm(dim=-1).flatten(1).amax(-1) > ARM_TOUCH_FORCE
         force = self.env.scene["source_feet_contact"].data.force
         if force is not None:
             self.contact_forces[:, self.contact_feet_indices] = (

@@ -10,10 +10,11 @@ MOTION_NAMES = (
     "leftstep",
     "rightstep",
 )
-# Compact K1 training goal; dimensions are a task choice. Standing arm-only
-# hand reach is z<=1.08 m and |y|<=.50 m (mid/high), |y|<=.30 m (low band), so
-# the 1.1 m bar needs no jump while corners need a step or lean.
-GOAL_WIDTH = 1.5
+# K1 training goal; dimensions are a task choice. Standing arm-only hand reach
+# is z<=1.08 m and |y|<=.50 m (mid/high), |y|<=.30 m (low band), so the 1.1 m
+# bar needs no jump. Width 2.0 m fits mid/low shots out to |y|=.85 m at the
+# robot plane (posts at 1.0 m, ball radius and margin), which need a step.
+GOAL_WIDTH = 2.0
 GOAL_HEIGHT = 1.1
 # Goal line sits behind the robot (root at x=0, heels at about -0.1) so the
 # keeper stands in front of the goal. Visual only; no collision.
@@ -39,6 +40,15 @@ PHASE1_X = 1.5
 DEFLECT_RATIO = 0.4
 DEFLECT_MIN = 0.5
 BEHIND_X = -0.1
+# Save credit (stopball / success flag) only when an arm subtree (shoulder link
+# to hand) touched the ball; body, head and leg deflections earn nothing.
+ARM_SAVE_CREDIT = True
+# eereach factor after the ball passed or was deflected. Upstream 2.0 rewarded
+# holding hands at a frozen target for the remaining ~2 s (15..20 per episode,
+# about a third of positive reward) regardless of the save.
+BEHIND_REACH_SCALE = 0.0
+# Minimum arm-ball contact force (N) in any physics substep to count a touch.
+ARM_TOUCH_FORCE = 0.1
 # EMA weight per finished episode for the episode-length curriculum signal.
 CURRICULUM_EMA = 0.01
 # Elbow pitch rotates about the forearm axis (I ~ .0015 kg m^2 incl. armature).
@@ -62,13 +72,16 @@ AMP_JOINT_IDS = tuple(range(10))
 # Ball-centre (y_min, y_max, z_min, z_max) at the ROBOT plane x=INTERCEPT_X.
 # Order: mid L/R, high L/R, low L/R. The goal plane only has to be scored on
 # (inside posts, under bar); low shots may bounce between robot and goal.
+# Mid/low start at |y|=.15 (upstream G1: .2..1.2 m, outside the body): with
+# .05..55 a frozen default-pose keeper kept out 26% of shots. High balls had
+# no free saves (0..1%) and keep .05..55 within standing arm reach.
 REGIONS = (
-    (0.05, 0.55, 0.4, 0.75),
-    (-0.55, -0.05, 0.4, 0.75),
+    (0.15, 0.85, 0.4, 0.75),
+    (-0.85, -0.15, 0.4, 0.75),
     (0.05, 0.55, 0.8, 1.05),
     (-0.55, -0.05, 0.8, 1.05),
-    (0.05, 0.55, 0.15, 0.35),
-    (-0.55, -0.05, 0.15, 0.35),
+    (0.15, 0.85, 0.15, 0.35),
+    (-0.85, -0.15, 0.15, 0.35),
 )
 BOUNDS = REGIONS
 EVAL_REGIONS = REGIONS

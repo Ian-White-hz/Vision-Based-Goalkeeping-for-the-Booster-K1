@@ -113,6 +113,7 @@ def reset(env, env_ids=None):
         "stop_flag",
         "success_flag",
         "has_in_air",
+        "arm_touch",
         "ball_last",
         "last_actions",
         "last_last_actions",

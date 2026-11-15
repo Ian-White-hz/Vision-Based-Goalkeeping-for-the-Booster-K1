@@ -63,7 +63,14 @@ try:
         wrapped.step(torch.zeros(6, 22))
         s.refresh()
         # K1 rescales ball-phase thresholds; upstream values must reproduce it.
-        upstream = dict(phase1_x=1.5, deflect_ratio=0.0, deflect_min=2.0, behind_x=0.0)
+        upstream = dict(
+            phase1_x=1.5,
+            deflect_ratio=0.0,
+            deflect_min=2.0,
+            behind_x=0.0,
+            arm_save_credit=False,
+            behind_reach_scale=2.0,
+        )
         for k, v in upstream.items():
             setattr(s, k, v)
         for name in REWARD_SCALES:
