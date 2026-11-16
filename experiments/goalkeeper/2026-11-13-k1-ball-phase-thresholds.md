@@ -203,3 +203,64 @@ Remaining free terms: `success` still pays `(flag+1)` while the hand is within .
 frozen target after the ball has passed (2.5 per episode), and the post* posture terms
 pay for standing still for ~2 s. These are candidates for the next ablation, together with AMP weight
 and episode length. Retrain from scratch.
+
+## Expert clips: level stance feet (prerequisite for leg AMP)
+
+Evidence (2026-11-15, `source_k1_armcredit_wide` model_3000 and the six clips):
+- Policy: kept out 18.5% (frozen keeper 5.9%), save credit 25.4%. Region id explains 71% of
+  arm-pose variance; hand-vs-target slope within a region is .08 (left) to .3 (right) in y.
+  Root moves 1..8 cm sideways and rises 1.7 cm at most: no step, no jump. High balls: hand
+  .38/.50 m from the ball.
+- The clips do contain steps and jumps: root lateral .26...63 m, root rise .12...18 m
+  (jump clips), hand up to 1.27..1.35 m. AMP has ignored the legs since 84c4dfc.
+- The backward COM is not a retarget error. In the published G1 clips the COM in the
+  stance-foot frame is -.03..-.15 m (median) as well; the K1 retarget is slightly better.
+  Cause: the stance foot is pitched toes-down by 4..8 deg in the clip world, so the same
+  joint angles on a flat foot rotate the body backward. In the clip world the COM is over
+  the feet fore-aft.
+- Laterally the clips are one-legged dives and lunges (other foot .2...37 m up, base roll
+  -13..-23 deg in the right clips): the COM is outside the support hull in 56..100% of stance
+  frames, by design. This is not corrected.
+
+Change: `booster_mjlab.motion.flat_foot` and `scripts/flatten_goalkeeper_feet.py` write
+`artifacts/goalkeeper_k1/serial_flatfoot`. Ankle pitch only: (1) level each low foot (sole
+below 2 cm, fading to none at 8 cm; at most .26 rad); (2) where the flat-foot COM is still
+less than 5 cm ahead of the rearmost support point, lean forward about the ankles (at most
+.2 rad) and move the root so the stance foot stays put. Gaussian smoothing over 1.5 frames.
+
+| clip | COM behind support (stance frames) | COM ahead of rear support, p50 (m) | max ankle change (rad) |
+|---|---|---|---|
+| lefthand | .10 -> .03 | .087 -> .080 | .37 |
+| righthand | .16 -> .00 | .040 -> .070 | .26 |
+| leftjump | .22 -> .00 | .058 -> .049 | .25 |
+| rightjump | .11 -> .01 | .085 -> .125 | .26 |
+| leftstep | .71 -> .05 | -.008 -> .048 | .38 |
+| rightstep | .71 -> .01 | -.021 -> .050 | .26 |
+
+Other joints are unchanged and joint speeds do not increase. Test:
+`tests/test_goalkeeper_flat_foot.py`. Not yet used in training: `dataset_root` still points
+to `serial` and `AMP_JOINT_IDS` is still head and arms.
+
+## 2026-11-16: back toward upstream (regions, any-part credit, full-body AMP)
+
+Motivation: model_3000 (armcredit_wide) reaches with the arm only (root moves
+1..8 cm sideways, rises <= 1.7 cm). Three changes, to be trained together:
+
+1. Regions = upstream G1 regions x ~.72 (K1/G1 height). Robot-plane ball
+   centre: mid |y| .15..85, z .30..85; high |y| .05..72, z .87..1.16; low
+   |y| .15..85, z .12..25. `GOAL_HEIGHT` 1.1 -> 1.3 (width stays 2.0).
+2. `ARM_SAVE_CREDIT = False`: any body part deflecting the ball earns stopball
+   credit, as upstream. `arm_touch` is still latched and logged.
+3. `AMP_JOINT_IDS = range(22)` (was head+arms), `AMP_DATASET =
+   artifacts/goalkeeper_k1/serial_flatfoot`. AMP window 20 -> 44, so earlier
+   checkpoints cannot be loaded by this code.
+
+Checks (1200 shots, no randomization):
+- Sampler first-attempt acceptance .93..1.00 per region.
+- Frozen default-pose keeper: kept out 4.4%, save credit 7.2% (mid .04/.08,
+  high .00/.00, low .07/.07).
+- Height alone does not force a jump: standing hand reach is 1.08 m and the
+  highest ball centre is 1.12 m (radius .10). High balls beyond |y| ~.5 and
+  mid/low beyond ~.5/.3 need the body to move. Same proportion as upstream.
+
+Not trained yet.

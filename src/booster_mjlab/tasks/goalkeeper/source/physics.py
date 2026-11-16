@@ -19,6 +19,45 @@ def ball_spec():
       </body></worldbody></mujoco>""")
 
 
+# Region marker colours (RGBA), REGIONS order: mid L/R, high L/R, low L/R.
+REGION_COLORS = (
+    (0.95, 0.25, 0.20, 0.80),  # mid left: red
+    (0.20, 0.45, 0.95, 0.80),  # mid right: blue
+    (0.95, 0.80, 0.15, 0.80),  # high left: yellow
+    (0.20, 0.80, 0.30, 0.80),  # high right: green
+    (0.95, 0.50, 0.10, 0.80),  # low left: orange
+    (0.65, 0.30, 0.90, 0.80),  # low right: purple
+)
+# Display tile per region: (column, row); column 0 is robot left (+y), row 0
+# is the bottom third of the goal mouth.
+REGION_TILES = ((0, 1), (1, 1), (0, 2), (1, 2), (0, 0), (1, 0))
+
+
+def add_region_markers(spec, x, width, height):
+    """Split the goal mouth into six translucent, collision-free colour tiles.
+
+    Display only: tiles are equal thirds/halves of the mouth and do not match
+    the REGIONS bounds, which are defined at the robot plane.
+    """
+    body = spec.body("goal")
+    w, h = width / 2, height / 3
+    for i, ((col, row), rgba) in enumerate(zip(REGION_TILES, REGION_COLORS)):
+        body.add_geom(
+            name=f"region_{i}",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            pos=[x, w / 2 * (1 - 2 * col), h * (row + 0.5)],
+            size=[0.003, w / 2, h / 2],
+            rgba=list(rgba),
+            contype=0,
+            conaffinity=0,
+            mass=0.0,
+            # Own group so viewers can draw tiles apart from the opaque posts
+            # (see booster_mjlab.viewer.TRANSLUCENT_GEOM_GROUP).
+            group=2,
+        )
+    return spec
+
+
 def ball_cfg():
     return EntityCfg(
         spec_fn=ball_spec, init_state=EntityCfg.InitialStateCfg(pos=(4, 0, 1))

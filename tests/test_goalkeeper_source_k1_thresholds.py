@@ -57,10 +57,15 @@ try:
     assert s._deflected().all() and not s._behind().logical_not().any()
     assert (s._reward_stopball() == 1).all() and (s.success_flag == 1).all()
     assert (s._reward_stopball() == 0).all()  # one-shot
-    # Same deflection without an arm touch: window closes, no credit.
+    # Same deflection without an arm touch: credited (upstream, any body part).
+    place(0.05, -1.5, -2.7, arm=False)
+    assert (s._reward_stopball() == 1).all() and (s.success_flag == 1).all()
+    # Arm-only mode: the window closes without credit.
+    s.arm_save_credit = True
     place(0.05, -1.5, -2.7, arm=False)
     assert (s._reward_stopball() == 0).all() and (s.success_flag == 0).all()
     assert (s.stop_flag == 1).all()
+    s.arm_save_credit = False
     # Small loss (20%) is not.
     place(0.05, -2.16, -2.7)
     assert not s._deflected().any() and (s._reward_stopball() == 0).all()

@@ -4,14 +4,18 @@ import mjlab  # noqa: F401
 import torch
 from mjlab.envs import ManagerBasedRlEnv
 from booster_mjlab.robots.booster_k1.k1_constants import K1_JOINT_ORDER
-from booster_mjlab.tasks.goalkeeper.source.config import env_cfg
+from booster_mjlab.tasks.goalkeeper.source.config import env_cfg, runner_cfg
 from booster_mjlab.tasks.goalkeeper.source.settings import (
     ELBOW_PITCH_DAMPING,
     TRUNK_PAYLOAD_KG,
     TRUNK_COM_OFFSET_M,
 )
 from booster_mjlab.tasks.goalkeeper.source.state import state
-from booster_mjlab.tasks.goalkeeper.source.settings import AMP_JOINT_IDS, PUSH_VEL
+from booster_mjlab.tasks.goalkeeper.source.settings import (
+    AMP_DATASET,
+    AMP_JOINT_IDS,
+    PUSH_VEL,
+)
 from booster_mjlab.tasks.goalkeeper.source.runner import AMP_DIM, SourceMotion
 from booster_mjlab.tasks.goalkeeper.amp_interfaces import GoalkeeperExpertSampler
 
@@ -59,16 +63,11 @@ finally:
     nominal.close()
     rand.close()
 
-# AMP sees head and arms only; expert windows use the same joint subset.
-
-assert all(
-    "Hip" not in K1_JOINT_ORDER[i]
-    and "Knee" not in K1_JOINT_ORDER[i]
-    and "Ankle" not in K1_JOINT_ORDER[i]
-    for i in AMP_JOINT_IDS
-)
-assert AMP_DIM == 2 * len(AMP_JOINT_IDS) == 20 and PUSH_VEL == 0.5
-sampler = GoalkeeperExpertSampler("artifacts/goalkeeper_k1/serial", "cpu")
+# AMP sees all 22 joints (as upstream) and reads the flat-foot clips.
+assert AMP_JOINT_IDS == tuple(range(len(K1_JOINT_ORDER)))
+assert AMP_DIM == 2 * len(AMP_JOINT_IDS) == 44 and PUSH_VEL == 0.5
+assert runner_cfg().dataset_root == AMP_DATASET
+sampler = GoalkeeperExpertSampler(AMP_DATASET, "cpu")
 q, fps = sampler._positions[0], sampler._fps[0]
 expert = SourceMotion(q[:, list(AMP_JOINT_IDS)], fps).get_expert_obs(8)
 assert expert.shape == (8, AMP_DIM)
@@ -81,7 +80,7 @@ try:
     )
     assert obs["amp"].shape == (2, len(AMP_JOINT_IDS))
     print(
-        f"AMP joint subset {len(AMP_JOINT_IDS)} (head+arms), window {AMP_DIM}; push {PUSH_VEL} m/s"
+        f"AMP joint subset {len(AMP_JOINT_IDS)} (all joints), window {AMP_DIM}; push {PUSH_VEL} m/s"
     )
 finally:
     e.close()

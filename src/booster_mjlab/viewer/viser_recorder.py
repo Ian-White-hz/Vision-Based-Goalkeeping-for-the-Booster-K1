@@ -35,7 +35,9 @@ from datetime import datetime
 from pathlib import Path
 
 import mediapy as media
+import mujoco
 import numpy as np
+import trimesh
 import viser
 import viser.transforms as vtf
 from mjlab.viewer.viser.viewer import ViserPlayViewer
@@ -61,6 +63,29 @@ _POLL_CAP_S = 0.05
 # Don't push huge files back through the websocket to the browser.
 _MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024
 _SLERP_EPS = 1e-6
+# Geom group and name marker for translucent overlay geoms (goalkeeper region
+# tiles). viser merges a body's geoms into one opaque GLB and ignores rgba alpha,
+# so these are re-rendered as separate meshes with explicit opacity.
+TRANSLUCENT_GEOM_GROUP = 2
+TRANSLUCENT_GEOM_TAG = "region_"
+
+
+class _HandleFanout:
+    """Acts as one batched handle; forwards pose/visibility to several."""
+
+    def __init__(self, handles: list) -> None:
+        object.__setattr__(self, "_handles", handles)
+
+    def __getattr__(self, name: str):
+        return getattr(self._handles[0], name)
+
+    def __setattr__(self, name: str, value) -> None:
+        for h in self._handles:
+            setattr(h, name, value)
+
+    def remove(self) -> None:
+        for h in self._handles:
+            h.remove()
 
 
 def _slerp(qa: np.ndarray, qb: np.ndarray, t: float) -> np.ndarray:
@@ -133,7 +158,55 @@ class RecordingViserPlayViewer(ViserPlayViewer):
     @override
     def setup(self) -> None:
         super().setup()
+        self._make_translucent_geoms()
         self._setup_recording_gui()
+
+    def _make_translucent_geoms(self) -> None:
+        """Replace tagged geoms' merged opaque mesh with one translucent mesh each."""
+        scene = self._scene
+        m = scene.mj_model
+        for mg in scene._mesh_groups:
+            if mg.group_id != TRANSLUCENT_GEOM_GROUP:
+                continue
+            body_id = int(mg.body_ids[0])
+            gids = [
+                g
+                for g in range(m.ngeom)
+                if m.geom_bodyid[g] == body_id
+                and m.geom_group[g] == TRANSLUCENT_GEOM_GROUP
+                and TRANSLUCENT_GEOM_TAG in (m.geom(g).name or "")
+            ]
+            if not gids:
+                continue
+            old = mg.handle
+            handles = []
+            for g in gids:
+                if m.geom_type[g] != mujoco.mjtGeom.mjGEOM_BOX:
+                    continue
+                box = trimesh.creation.box(extents=2 * m.geom_size[g])
+                box.apply_transform(
+                    trimesh.transformations.quaternion_matrix(m.geom_quat[g])
+                )
+                box.apply_translation(m.geom_pos[g])
+                rgba = m.geom_rgba[g]
+                handles.append(
+                    scene.server.scene.add_batched_meshes_simple(
+                        f"{old.name}_translucent/{m.geom(g).name.replace('/', '_')}",
+                        vertices=box.vertices.astype(np.float32),
+                        faces=box.faces.astype(np.uint32),
+                        batched_wxyzs=np.asarray(old.batched_wxyzs),
+                        batched_positions=np.asarray(old.batched_positions),
+                        batched_colors=tuple(int(c * 255) for c in rgba[:3]),
+                        opacity=float(rgba[3]),
+                        side="double",
+                        cast_shadow=False,
+                        receive_shadow=False,
+                        visible=old.visible,
+                    )
+                )
+            if handles:
+                old.remove()
+                mg.handle = _HandleFanout(handles)
 
     def _setup_recording_gui(self) -> None:
         # The tab group is local to the base setup(), so the recording controls

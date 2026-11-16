@@ -38,6 +38,94 @@ class SourceMotion:
         return torch.cat((q[i], q[lo] * (1 - alpha) + q[hi] * alpha), -1)
 
 
+class _IterationStats:
+    """Per-iteration means of per-step logs, accumulated on device.
+
+    Writing every control step cost ~17k host syncs and ~1.6 MB of event file
+    per iteration; this keeps the same tags with one point per iteration.
+    Region/* values are means over all (step, env) samples of that region.
+    """
+
+    def __init__(self, env, device):
+        self.env, self.device = env, device
+        self.names = None
+
+    def _init(self, source):
+        self.reward_names = list(source.rewards)
+        self.diag_names = list(source.diagnostics)
+        self.names = (
+            ["amp"] + ["reward_" + n for n in self.reward_names] + self.diag_names
+        )
+        self.weights = torch.tensor(
+            [
+                0.6 * self.env.step_dt * self.env.cfg.rewards[n].weight
+                for n in self.reward_names
+            ],
+            device=self.device,
+        )
+        self.region_sum = torch.zeros(6, len(self.names), device=self.device)
+        self.region_count = torch.zeros(6, device=self.device)
+        self.log_sum, self.log_count = {}, {}
+        self.episode = torch.zeros(3, device=self.device)
+
+    def add_step(self, source, ids, amp, total, dones, extras):
+        if self.names is None:
+            self._init(source)
+        dev = self.device
+        rewards = torch.stack(
+            [source.rewards[n].to(dev).float() for n in self.reward_names], -1
+        )
+        columns = [0.4 * amp[:, None], rewards * self.weights]
+        if self.diag_names:
+            columns.append(
+                torch.stack(
+                    [
+                        source.diagnostics.get(n, amp * 0).to(dev).float()
+                        for n in self.diag_names
+                    ],
+                    -1,
+                )
+            )
+        values = torch.cat(columns, -1)
+        onehot = torch.nn.functional.one_hot(ids.clamp(0, 5), 6).float()
+        self.region_sum += onehot.T @ values
+        self.region_count += onehot.sum(0)
+        for key, value in extras.get("log", {}).items():
+            v = torch.as_tensor(value, device=dev).float().mean()
+            ok = torch.isfinite(v)
+            self.log_sum[key] = self.log_sum.get(key, 0) + torch.where(ok, v, 0.0)
+            self.log_count[key] = self.log_count.get(key, 0) + ok.float()
+
+    def add_episodes(self, episode_return, lengths, dones):
+        if self.names is None:
+            return
+        done = dones.bool()
+        self.episode += torch.stack(
+            (episode_return[done].sum(), lengths[done].sum(), done.sum().float())
+        )
+
+    def write(self, writer, step):
+        if self.names is None:
+            return
+        region_sum = self.region_sum.cpu()
+        region_count = self.region_count.cpu()
+        for region in range(6):
+            if region_count[region] > 0:
+                means = (region_sum[region] / region_count[region]).tolist()
+                for name, value in zip(self.names, means):
+                    writer.add_scalar(f"Region/{region}/{name}", value, step)
+        for key in self.log_sum:
+            count = float(self.log_count[key])
+            if count > 0:
+                writer.add_scalar(key, float(self.log_sum[key]) / count, step)
+        ret, length, n = self.episode.tolist()
+        if n > 0:
+            writer.add_scalar("Train/episode_return", ret / n, step)
+            writer.add_scalar(
+                "Train/episode_seconds", length / n * self.env.step_dt, step
+            )
+
+
 class SourceRunner:
     def __init__(self, env, train_cfg, log_dir=None, device="cpu", **kwargs):
         self.env, self.cfg, self.device = env, train_cfg, device
@@ -100,6 +188,7 @@ class SourceRunner:
         try:
             for _ in range(num_learning_iterations):
                 sums = torch.zeros(3, device=self.device)
+                stats = _IterationStats(self.env.unwrapped, self.device)
                 with torch.no_grad():
                     for _ in range(self.num_steps_per_env):
                         actions = self.alg.act(obs["actor"], obs["critic"])
@@ -146,59 +235,17 @@ class SourceRunner:
                             (task.mean() * 0.6, amp.mean() * 0.4, total.mean())
                         )
                         if writer:
-                            source = state(self.env.unwrapped)
-                            for region in range(6):
-                                selected = ids == region
-                                if selected.any():
-                                    prefix = f"Region/{region}/"
-                                    writer.add_scalar(
-                                        prefix + "amp",
-                                        (0.4 * amp[selected]).mean().item(),
-                                        self.total_timesteps,
-                                    )
-                                    for name, values in source.rewards.items():
-                                        weight = self.env.unwrapped.cfg.rewards[
-                                            name
-                                        ].weight
-                                        writer.add_scalar(
-                                            prefix + "reward_" + name,
-                                            (
-                                                0.6
-                                                * self.env.unwrapped.step_dt
-                                                * weight
-                                                * values[selected]
-                                            )
-                                            .mean()
-                                            .item(),
-                                            self.total_timesteps,
-                                        )
-                                    for name, values in source.diagnostics.items():
-                                        writer.add_scalar(
-                                            prefix + name,
-                                            values[selected].mean().item(),
-                                            self.total_timesteps,
-                                        )
-                            for key, value in extras.get("log", {}).items():
-                                if torch.isfinite(torch.as_tensor(value)).all():
-                                    writer.add_scalar(
-                                        key,
-                                        float(torch.as_tensor(value).float().mean()),
-                                        self.total_timesteps,
-                                    )
+                            stats.add_step(
+                                state(self.env.unwrapped),
+                                ids,
+                                amp,
+                                total,
+                                dones,
+                                extras,
+                            )
                         episode_return += total
                         lengths += 1
-                        if writer and dones.any():
-                            writer.add_scalar(
-                                "Train/episode_return",
-                                episode_return[dones.bool()].mean().item(),
-                                self.total_timesteps,
-                            )
-                            writer.add_scalar(
-                                "Train/episode_seconds",
-                                lengths[dones.bool()].mean().item()
-                                * self.env.unwrapped.step_dt,
-                                self.total_timesteps,
-                            )
+                        stats.add_episodes(episode_return, lengths, dones)
                         episode_return[dones.bool()] = 0
                         lengths[dones.bool()] = 0
                         self.total_timesteps += self.env.num_envs
@@ -249,6 +296,7 @@ class SourceRunner:
                         state(self.env.unwrapped).episode_length_ema,
                         self.current_learning_iteration,
                     )
+                    stats.write(writer, self.current_learning_iteration)
                     writer.add_scalar(
                         "Train/learning_rate",
                         self.alg.learning_rate,

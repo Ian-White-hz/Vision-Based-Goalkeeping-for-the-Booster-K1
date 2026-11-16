@@ -11,11 +11,12 @@ MOTION_NAMES = (
     "rightstep",
 )
 # K1 training goal; dimensions are a task choice. Standing arm-only hand reach
-# is z<=1.08 m and |y|<=.50 m (mid/high), |y|<=.30 m (low band), so the 1.1 m
-# bar needs no jump. Width 2.0 m fits mid/low shots out to |y|=.85 m at the
-# robot plane (posts at 1.0 m, ball radius and margin), which need a step.
+# is z<=1.08 m and |y|<=.50 m (mid/high), |y|<=.30 m (low band). The 1.3 m bar
+# admits high shots up to 1.16 m at the robot plane (needs a jump); width 2.0 m
+# fits mid/low shots out to |y|=.85 m (posts at 1.0 m, ball radius and margin),
+# which need a step.
 GOAL_WIDTH = 2.0
-GOAL_HEIGHT = 1.1
+GOAL_HEIGHT = 1.3
 # Goal line sits behind the robot (root at x=0, heels at about -0.1) so the
 # keeper stands in front of the goal. Visual only; no collision.
 GOAL_X = -0.4
@@ -40,9 +41,10 @@ PHASE1_X = 1.5
 DEFLECT_RATIO = 0.4
 DEFLECT_MIN = 0.5
 BEHIND_X = -0.1
-# Save credit (stopball / success flag) only when an arm subtree (shoulder link
-# to hand) touched the ball; body, head and leg deflections earn nothing.
-ARM_SAVE_CREDIT = True
+# True: save credit (stopball / success flag) only when an arm subtree touched
+# the ball. False is upstream: a deflection by any body part counts; regions
+# start outside the body, so standing still earns little.
+ARM_SAVE_CREDIT = False
 # eereach factor after the ball passed or was deflected. Upstream 2.0 rewarded
 # holding hands at a frozen target for the remaining ~2 s (15..20 per episode,
 # about a third of positive reward) regardless of the save.
@@ -64,24 +66,26 @@ TRUNK_COM_OFFSET_M = 0.03
 # Robot base push (uniform xy velocity, m/s, every 750 control steps). Upstream
 # G1 used 1.5; on K1 it raised deterministic falls from 12% to 28%.
 PUSH_VEL = 0.5
-# AMP discriminator inputs: indices into K1_JOINT_ORDER (head 0..1, arms 2..9).
-# Legs are excluded: the retargeted K1 expert clips put the static COM behind
-# the heel (median -.05..-.08 m in the foot frame vs. heel at -.066), and AMP
-# pulled the stance into backward falls. Legs are shaped by task rewards only.
-AMP_JOINT_IDS = tuple(range(10))
+# AMP discriminator inputs: indices into K1_JOINT_ORDER. All 22 joints, as
+# upstream. Head+arms only (range(10)) let a standing keeper earn full style
+# reward. Legs need the flat-foot clips (AMP_DATASET): the raw retargets put
+# the flat-foot static COM behind the heel and AMP pulled the stance backward.
+AMP_JOINT_IDS = tuple(range(22))
+AMP_DATASET = "artifacts/goalkeeper_k1/serial_flatfoot"
 # Ball-centre (y_min, y_max, z_min, z_max) at the ROBOT plane x=INTERCEPT_X.
 # Order: mid L/R, high L/R, low L/R. The goal plane only has to be scored on
 # (inside posts, under bar); low shots may bounce between robot and goal.
-# Mid/low start at |y|=.15 (upstream G1: .2..1.2 m, outside the body): with
-# .05..55 a frozen default-pose keeper kept out 26% of shots. High balls had
-# no free saves (0..1%) and keep .05..55 within standing arm reach.
+# Upstream G1 regions (mid y .2..1.2 z .4..1.2, high y 0..1 z 1.2..1.6, low
+# y .2..1.2 z .1..3) scaled by the K1/G1 height ratio ~.72: mid/low reach
+# |y|=.85 (step), high reaches z=1.16 and |y|=.72 (jump). Mid/low start at
+# |y|=.15, outside the body; low z is floored by the ball radius.
 REGIONS = (
-    (0.15, 0.85, 0.4, 0.75),
-    (-0.85, -0.15, 0.4, 0.75),
-    (0.05, 0.55, 0.8, 1.05),
-    (-0.55, -0.05, 0.8, 1.05),
-    (0.15, 0.85, 0.15, 0.35),
-    (-0.85, -0.15, 0.15, 0.35),
+    (0.15, 0.85, 0.3, 0.85),
+    (-0.85, -0.15, 0.3, 0.85),
+    (0.05, 0.72, 0.87, 1.16),
+    (-0.72, -0.05, 0.87, 1.16),
+    (0.15, 0.85, 0.12, 0.25),
+    (-0.85, -0.15, 0.12, 0.25),
 )
 BOUNDS = REGIONS
 EVAL_REGIONS = REGIONS

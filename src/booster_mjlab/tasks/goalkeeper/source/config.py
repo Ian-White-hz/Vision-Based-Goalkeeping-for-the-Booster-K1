@@ -23,6 +23,7 @@ from .settings import (
     REWARD_SCALES,
     GOAL_WIDTH,
     GOAL_HEIGHT,
+    AMP_DATASET,
     GOAL_X,
     BALL_RADIUS,
     SIM_DT,
@@ -33,7 +34,14 @@ from .settings import (
 from .state import observation, reward, termination
 from .events import reset, perturb
 from .actions import SourceActionCfg, SourceMotorCfg
-from .physics import ball_cfg, restitution, body_mass, body_com_offset, geom_friction
+from .physics import (
+    ball_cfg,
+    restitution,
+    body_mass,
+    body_com_offset,
+    geom_friction,
+    add_region_markers,
+)
 
 
 @dataclass(kw_only=True)
@@ -43,7 +51,7 @@ class SourceEnvCfg(ManagerBasedRlEnvCfg):
 
 @dataclass
 class SourceRunnerCfg(RslRlOnPolicyRunnerCfg):
-    dataset_root: str = "artifacts/goalkeeper_k1/serial"
+    dataset_root: str = AMP_DATASET
     value_smoothness_coef: float = 0.1
     smoothness_upper_bound: float = 1.0
     smoothness_lower_bound: float = 0.1
@@ -87,6 +95,14 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
     # Visual goal only: all goal geoms have collision masks set to zero.
     scene.env_spacing = 5.0
     scene.entities["ball"] = ball_cfg()
+    # Goal mouth split into six colour tiles, one per region id (visual only;
+    # the regions themselves are defined at the robot plane x=INTERCEPT_X).
+    goal = scene.entities["goal"]
+    goal_fn = goal.spec_fn
+    scene.entities["goal"] = replace(
+        goal,
+        spec_fn=lambda: add_region_markers(goal_fn(), GOAL_X, GOAL_WIDTH, GOAL_HEIGHT),
+    )
     scene.sensors = (
         ContactSensorCfg(
             name="source_feet_contact",
@@ -100,7 +116,7 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
             num_slots=1,
         ),
         # Ball contact with either arm subtree (shoulder link to hand) in any
-        # substep; gates save credit (ARM_SAVE_CREDIT).
+        # substep; logged, and gates save credit when ARM_SAVE_CREDIT.
         ContactSensorCfg(
             name="source_arm_ball_contact",
             primary=ContactMatch(
