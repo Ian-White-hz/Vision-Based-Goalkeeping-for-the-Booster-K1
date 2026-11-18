@@ -1,0 +1,228 @@
+{
+  "sole_x_range_m": [
+    -0.06588804807182427,
+    0.11949323235347496
+  ],
+  "lefthand": {
+    "before": {
+      "stance_frames": 100,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -9.37,
+        0.81,
+        4.91
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.003,
+        0.087,
+        0.14
+      ],
+      "com_behind_support_fraction": 0.1
+    },
+    "after": {
+      "stance_frames": 93,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -0.54,
+        -0.02,
+        0.36
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.041,
+        0.08,
+        0.138
+      ],
+      "com_behind_support_fraction": 0.03225806451612903
+    },
+    "ankle_pitch_change_rad": {
+      "level_mean_abs": 0.05339454172507737,
+      "level_max_abs": 0.2390073615189383,
+      "lean_mean_abs": 0.025315787241200424,
+      "lean_max_abs": 0.1988605487698713,
+      "lean_frames": 55
+    }
+  },
+  "righthand": {
+    "before": {
+      "stance_frames": 215,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        0.3,
+        4.07,
+        13.18
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        -0.012,
+        0.04,
+        0.113
+      ],
+      "com_behind_support_fraction": 0.16279069767441862
+    },
+    "after": {
+      "stance_frames": 169,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -1.04,
+        -0.07,
+        0.65
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.048,
+        0.07,
+        0.118
+      ],
+      "com_behind_support_fraction": 0.0
+    },
+    "ankle_pitch_change_rad": {
+      "level_mean_abs": 0.04803719100941385,
+      "level_max_abs": 0.25809123331930484,
+      "lean_mean_abs": 0.007584555755711452,
+      "lean_max_abs": 0.09768736670215826,
+      "lean_frames": 78
+    }
+  },
+  "leftjump": {
+    "before": {
+      "stance_frames": 54,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -6.59,
+        -2.33,
+        14.68
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        -0.016,
+        0.058,
+        0.08
+      ],
+      "com_behind_support_fraction": 0.2222222222222222
+    },
+    "after": {
+      "stance_frames": 48,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -0.97,
+        -0.19,
+        0.4
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.047,
+        0.049,
+        0.062
+      ],
+      "com_behind_support_fraction": 0.0
+    },
+    "ankle_pitch_change_rad": {
+      "level_mean_abs": 0.027066108619385337,
+      "level_max_abs": 0.25089760547050227,
+      "lean_mean_abs": 0.008880540311917975,
+      "lean_max_abs": 0.08746005320350408,
+      "lean_frames": 48
+    }
+  },
+  "rightjump": {
+    "before": {
+      "stance_frames": 115,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -0.36,
+        5.37,
+        13.66
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        -0.028,
+        0.085,
+        0.124
+      ],
+      "com_behind_support_fraction": 0.11304347826086956
+    },
+    "after": {
+      "stance_frames": 102,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -2.5,
+        -0.01,
+        1.2
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.102,
+        0.125,
+        0.15
+      ],
+      "com_behind_support_fraction": 0.00980392156862745
+    },
+    "ankle_pitch_change_rad": {
+      "level_mean_abs": 0.04711309984427427,
+      "level_max_abs": 0.24248322762820668,
+      "lean_mean_abs": 0.0023811061776353643,
+      "lean_max_abs": 0.06492341811072098,
+      "lean_frames": 20
+    }
+  },
+  "leftstep": {
+    "before": {
+      "stance_frames": 101,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -4.59,
+        3.57,
+        10.66
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        -0.085,
+        -0.008,
+        0.056
+      ],
+      "com_behind_support_fraction": 0.7128712871287128
+    },
+    "after": {
+      "stance_frames": 88,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -1.5,
+        -0.04,
+        0.37
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.017,
+        0.048,
+        0.056
+      ],
+      "com_behind_support_fraction": 0.045454545454545456
+    },
+    "ankle_pitch_change_rad": {
+      "level_mean_abs": 0.06526669541881092,
+      "level_max_abs": 0.24378563506209383,
+      "lean_mean_abs": 0.04755635834020852,
+      "lean_max_abs": 0.20000000000000004,
+      "lean_frames": 113
+    }
+  },
+  "rightstep": {
+    "before": {
+      "stance_frames": 94,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -1.17,
+        5.38,
+        14.99
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        -0.048,
+        -0.021,
+        0.027
+      ],
+      "com_behind_support_fraction": 0.7127659574468085
+    },
+    "after": {
+      "stance_frames": 67,
+      "stance_foot_pitch_deg_p10_p50_p90": [
+        -1.46,
+        -0.06,
+        0.7
+      ],
+      "com_ahead_of_rear_support_m_p10_p50_p90": [
+        0.037,
+        0.05,
+        0.092
+      ],
+      "com_behind_support_fraction": 0.014925373134328358
+    },
+    "ankle_pitch_change_rad": {
+      "level_mean_abs": 0.04714177312173717,
+      "level_max_abs": 0.2598648884682286,
+      "lean_mean_abs": 0.026601988197337185,
+      "lean_max_abs": 0.17575690512113964,
+      "lean_frames": 72
+    }
+  }
+}

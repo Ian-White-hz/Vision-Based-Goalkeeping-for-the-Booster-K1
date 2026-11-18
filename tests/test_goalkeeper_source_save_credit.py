@@ -14,7 +14,7 @@ from booster_mjlab.tasks.goalkeeper.source.settings import (
 from booster_mjlab.tasks.goalkeeper.source.state import state
 
 torch.set_num_threads(1)
-assert not ARM_SAVE_CREDIT and BEHIND_REACH_SCALE == 0.0
+assert not ARM_SAVE_CREDIT and BEHIND_REACH_SCALE == 2.0
 # Mid/low regions start outside the body; every region fits inside the posts.
 for i in (0, 1, 4, 5):
     assert min(abs(REGIONS[i][0]), abs(REGIONS[i][1])) >= 0.15, REGIONS[i]
@@ -52,11 +52,20 @@ try:
         assert s.success_flag.tolist() == [1.0, trunk], s.success_flag
         assert stop[0] > 0 and (stop[1] > 0) == (not arm_only), stop
         assert (s.stop_flag == 1).all()
-        # After the ball is deflected the hand-target reach term is scaled to 0.
-        assert (s._reward_eereach()[s._behind()] == 0).all()
+        # After the deflection eereach is 2x the plain reach term (upstream),
+        # and 0 when the scale is 0.
+        behind = s._behind()
+        reach = 1 - 1 / (1 + torch.exp(-s.curriculumsigma * (s.dist - 0.2)))
+        upright = 1 - s.projected_gravity[:, :2].square().sum(1).clip(0, 1)
+        torch.testing.assert_close(
+            s._reward_eereach()[behind], (2 * reach * upright)[behind]
+        )
+        s.behind_reach_scale = 0.0
+        assert (s._reward_eereach()[behind] == 0).all()
+        s.behind_reach_scale = BEHIND_REACH_SCALE
     print(
         "any-part deflection credited by default; arm_only credits the hand hit "
-        "only; behind-phase eereach is 0"
+        "only; behind-phase eereach is 2x reach"
     )
 finally:
     e.close()

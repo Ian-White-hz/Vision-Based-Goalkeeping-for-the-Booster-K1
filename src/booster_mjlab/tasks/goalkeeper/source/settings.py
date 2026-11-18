@@ -25,14 +25,15 @@ INTERCEPT_X = 0.0
 BALL_RADIUS = 0.1
 # Physics step; the sampler cancels semi-implicit Euler gravity drift for it.
 SIM_DT = 0.005
-# Shot launch: origin x range and time to reach the robot plane. 3..4.5 m with
-# .6...8 s gives |vx| ~4.4..6.4 m/s and 25..40 deg descent (10-90%); the
-# previous 1.5..2.5 m / .7...9 s produced 47..62 deg lobs.
-SHOT_START_X = (3.0, 4.5)
-SHOT_INTERCEPT_TIME = (0.6, 0.8)
+# Shot launch: origin x range and time to reach the robot plane. Upstream G1:
+# 3..5 m, .36...95 s to the robot. K1 uses the slow end, .8..1.0 s, to leave
+# time for a step or jump (expert side steps take .6..1.0 s); 4.5..6 m keeps
+# |vx| ~4.5..7.5 m/s so the longer flight does not turn into a lob.
+SHOT_START_X = (4.5, 6.0)
+SHOT_INTERCEPT_TIME = (0.8, 1.0)
 # Actor sees the ball only inside this robot-frame x range (upstream 3.4 for
 # 3..5 m launches); must exceed SHOT_START_X[1] or early flight is hidden.
-BALL_VISIBLE_X = 4.8
+BALL_VISIBLE_X = 6.3
 # Ball-phase thresholds rescaled for K1 shots (see k1_rewards.py).
 # Upstream: far phase x>1.5, deflection dvx>2 (~36% of median |vx|), behind
 # x<0. With K1 shots at |vx|~5.3 m/s, x=1.5 again leaves ~.28 s of reach phase.
@@ -45,10 +46,11 @@ BEHIND_X = -0.1
 # the ball. False is upstream: a deflection by any body part counts; regions
 # start outside the body, so standing still earns little.
 ARM_SAVE_CREDIT = False
-# eereach factor after the ball passed or was deflected. Upstream 2.0 rewarded
-# holding hands at a frozen target for the remaining ~2 s (15..20 per episode,
-# about a third of positive reward) regardless of the save.
-BEHIND_REACH_SCALE = 0.0
+# eereach factor after the ball passed or was deflected. Upstream 2.0: the hand
+# staying at the frozen target for the remaining ~2 s keeps paying, the main
+# payoff for having reached it. With regions inside standing arm reach this
+# paid a third of positive reward regardless of the save (then set to 0).
+BEHIND_REACH_SCALE = 2.0
 # Minimum arm-ball contact force (N) in any physics substep to count a touch.
 ARM_TOUCH_FORCE = 0.1
 # EMA weight per finished episode for the episode-length curriculum signal.

@@ -264,3 +264,50 @@ Checks (1200 shots, no randomization):
   mid/low beyond ~.5/.3 need the body to move. Same proportion as upstream.
 
 Not trained yet.
+
+Same day, two more changes for the same run:
+
+4. `BEHIND_REACH_SCALE` 0 -> 2 (upstream). With targets beyond standing reach
+   the post-pass reach term is the main payoff for having reached the target.
+5. Slower arrival: `SHOT_INTERCEPT_TIME` .6...8 -> .8..1.0 s, `SHOT_START_X`
+   3..4.5 -> 4.5..6 m, `BALL_VISIBLE_X` 4.8 -> 6.3. Upstream G1 is 3..5 m with
+   .4..1.0 s to the end point (~.36...95 s to the robot), so this is the slow
+   end of upstream. Sampled (10/50/90%): time .82/.90/.98 s, |vx| 5.1/5.9/6.7
+   m/s, descent 29/36/43 deg, reach phase (x < 1.5 m) .22/.26/.30 s.
+   First-attempt acceptance .97..1.00.
+
+### Result: 2026-11-16_15-50-14_source_k1_upstream_like (6000 it, 512 envs)
+
+Eval: 1800 shots (300/region), play, no randomization, deterministic.
+Kept out (frozen keeper in brackets): mid-L .24 (.02), mid-R .42 (.07),
+high-L .00, high-R .00, low-L .48 (.07), low-R .66 (.04); all .30 (.03).
+Stochastic actions: .30; true region id fed to the actor: .34.
+
+Movement at ball crossing (root y toward the ball, mean): mid-R +.13, low-R
++.16, high-R +.06 m; all left regions +.00..+.02 m. Root rise <= ~2.5 cm,
+`successland` 0 throughout training: no jump. Every region widens the stance
+from +-.10 to +-.20 m about .3 s after launch.
+- Kept-out by |y|: within .3 m .58..98 (body/arms cover it); beyond .5 m left
+  .00..11, right mid .06..24, right low .40..61.
+- Swapping the region id (L<->R) leaves behaviour unchanged, so the actor does
+  not use the id for side; the asymmetry is in the policy itself.
+- Region classifier at launch+.3 s: high-L/R labelled as mid 100%, mid-R as
+  low-R 82%; at +.6 s high still only .48/.13 correct.
+- Training-time per-region rewards are near symmetric (stopball, success).
+- Clip lateral range: leftstep .36 m vs rightstep .63 m, leftjump .26 vs
+  rightjump .42 m.
+
+### Continued: 2026-11-17_11-28-20_source_k1_upstream_like_cont (model_12000)
+
+Same eval (1800 shots, deterministic; kept-out varies +-.02..03 between runs
+from GPU nondeterminism). Kept out 6000 -> 12000: all .32 -> .45; mid-L
+.24 -> .52, mid-R .43 -> .61, high-L .01 -> .05, high-R .00 -> .02, low-L
+.42 -> .72, low-R .79 -> .82.
+- Left side now moves: root y toward ball mean mid-L +.00 -> +.08 m, low-L
+  +.01 -> +.18 m; far low-L (|y|>.65) kept .00 -> .64.
+- Jumps appear (root rise > 5 cm from the .4 s stance): high-L 41%, high-R
+  71%, p90 rise .11..12 m, but the root peak is ~.07 s after the ball crosses
+  the robot plane. High balls: arm touch .46/.27, hand-ball min .12..20 m,
+  kept only .05/.02 (touched but not deflected out).
+- Flight (both feet > 2 cm up) is right-sided: mid-R 58%, low-R 46%, high-R
+  59% vs. mid-L 3%, low-L 1%, high-L 22%. Left saves use sliding/stepping.
