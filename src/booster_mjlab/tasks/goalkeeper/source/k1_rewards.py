@@ -18,6 +18,11 @@ from .settings import (
     BEHIND_X,
     ARM_SAVE_CREDIT,
     BEHIND_REACH_SCALE,
+    HIGHREACH_Z_SIGMA,
+    HIGHREACH_OVER,
+    HIGHREACH_OVER_SIGMA,
+    HIGHREACH_Y_SIGMA,
+    HIGHREACH_WIDE,
 )
 
 
@@ -77,6 +82,34 @@ class K1Rewards(SourceRewards):
             torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1), 0.0, 1.0
         )
         return taskrew * upright
+
+    def _reward_highreach(self):
+        """High regions: a hand at the ball's crossing height and side (K1 only).
+
+        eereach's 3D sigmoid is flat around the 0.2 m threshold and its jump
+        multiplier pays for upward trunk velocity alone, so high shots were
+        farmed without raising a hand. This term scores the better hand on
+        height (full credit from the ball centre to HIGHREACH_OVER above it)
+        and lateral offset to end_target, from the near phase until the ball
+        passes the robot or is deflected: half from tight Gaussians, half from
+        HIGHREACH_WIDE times wider ones (gradient while the hand is far). In
+        [0, 1], scaled by uprightness.
+        """
+        x = self._ball_x()
+        high = (self.end_regions == 2) | (self.end_regions == 3)
+        active = high & (x <= self.phase1_x) & ~self._behind()
+        hands = self.rigid_body_states[:, self.hand_indices, :3]
+        target = self.end_target[:, None]
+        dz = target[..., 2] - hands[..., 2]
+        below = dz.clamp(min=0.0) / HIGHREACH_Z_SIGMA
+        above = (-dz - HIGHREACH_OVER).clamp(min=0.0) / HIGHREACH_OVER_SIGMA
+        side = (hands[..., 1] - target[..., 1]) / HIGHREACH_Y_SIGMA
+        q = below.square() + above.square() + side.square()
+        score = 0.5 * torch.exp(-q) + 0.5 * torch.exp(-q / HIGHREACH_WIDE**2)
+        upright = 1 - torch.clip(
+            torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1), 0.0, 1.0
+        )
+        return score.amax(-1) * upright * active
 
     def _reward_stopball(self):
         x = self._ball_x()

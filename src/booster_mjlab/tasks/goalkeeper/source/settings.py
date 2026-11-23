@@ -114,7 +114,22 @@ REWARD_SCALES = dict(
     dof_pos_limits=-3.0,
     dof_vel_limits=-2.0,
     torque_limits=-3.0,
+    # K1 only, off by default (not in upstream): hand height/side guidance for
+    # high shots, see K1Rewards._reward_highreach. Enable with e.g.
+    # --env.rewards.highreach.weight 5.0
+    highreach=0.0,
 )
+# Reward terms with no upstream counterpart (skipped by the parity test).
+K1_ONLY_REWARDS = ("highreach",)
+# highreach shape (m): full credit from the ball centre height up to
+# HIGHREACH_OVER above it; Gaussian fall-off below (Z), above (OVER_SIGMA) and
+# sideways (Y) of the crossing point. Half the credit uses sigmas
+# HIGHREACH_WIDE times larger so a hand far from the ball still has a gradient.
+HIGHREACH_Z_SIGMA = 0.10
+HIGHREACH_OVER = 0.10
+HIGHREACH_OVER_SIGMA = 0.15
+HIGHREACH_Y_SIGMA = 0.15
+HIGHREACH_WIDE = 3.0
 
 
 # No waist on K1: omit postwaistdofpos/deviation_waist_pitch_joint, don't substitute hips.
@@ -122,6 +137,9 @@ REWARD_SCALES = dict(
 class SourceSettings:
     play: bool = False
     randomize: bool = True
+    # Actor ball input: "truth" (sim position + noise, upstream), "synthetic"
+    # (geometric camera model + tracker) or "rendered" (head camera images).
+    ball_input: str = "truth"
 
     # Ball perturbations are opt-in; robot randomization remains independent.
     ball_drag: bool = False

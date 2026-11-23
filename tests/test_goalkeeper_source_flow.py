@@ -11,7 +11,11 @@ from mjlab.rl import RslRlVecEnvWrapper
 from booster_mjlab.tasks.goalkeeper.source.config import env_cfg, runner_cfg
 from booster_mjlab.tasks.goalkeeper.source.state import state
 from booster_mjlab.tasks.goalkeeper.source.runner import SourceRunner
-from booster_mjlab.tasks.goalkeeper.source.settings import REWARD_SCALES, AMP_JOINT_IDS
+from booster_mjlab.tasks.goalkeeper.source.settings import (
+    REWARD_SCALES,
+    AMP_JOINT_IDS,
+    K1_ONLY_REWARDS,
+)
 
 torch.set_num_threads(1)
 cfg = env_cfg(num_envs=6, randomize=False)
@@ -76,6 +80,8 @@ try:
         for name in REWARD_SCALES:
             if name == "successland":
                 continue  # K1 adaptation covered by test_goalkeeper_source_small_jump.py.
+            if name in K1_ONLY_REWARDS:
+                continue  # no upstream method; see test_goalkeeper_source_highreach.py.
             # Snapshot source stateful flags for identical preconditions.
             flags = [s.stop_flag.clone(), s.success_flag.clone(), s.has_in_air.clone()]
             expected = ns["_reward_" + name](s)

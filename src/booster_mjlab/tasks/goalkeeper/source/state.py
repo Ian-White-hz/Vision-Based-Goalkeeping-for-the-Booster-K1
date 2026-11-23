@@ -104,6 +104,14 @@ class SourceState(K1Rewards):
         self.first_near = torch.full_like(self.catchstep, -1)
         self.diagnostics = {}
         self.terminal_critic = z(92)
+        # Actor ball input other than sim truth: see vision/ball_input.py.
+        self.ball_input = None
+        if settings.ball_input != "truth":
+            from .vision.ball_input import make_ball_input
+
+            self.ball_input = make_ball_input(
+                env, settings.ball_input, randomize=settings.randomize
+            )
 
     def _reward_successland(self):
         force_z = self.contact_forces[:, self.contact_feet_indices, 2]
@@ -148,7 +156,11 @@ class SourceState(K1Rewards):
             self.arm_touch |= arm.norm(dim=-1).flatten(1).amax(-1) > ARM_TOUCH_FORCE
         force = self.env.scene["source_feet_contact"].data.force
         if force is not None:
-            self.contact_forces[:, self.contact_feet_indices] = (
+            # mjlab reports the force of the primary (foot) on the ground, so a
+            # standing foot reads z < 0. Upstream (Isaac Gym net contact force)
+            # uses the ground reaction on the foot, z > 0: flip the sign so the
+            # "force_z > 1" contact tests (jump detection, successland) work.
+            self.contact_forces[:, self.contact_feet_indices] = -(
                 force.sum(dim=2) if force.ndim == 4 else force
             )
 
@@ -261,6 +273,10 @@ class SourceState(K1Rewards):
             )
             current += (2 * torch.rand_like(current) - 1) * scale
             flying &= self.catchstep > self.vanish_step
+        if self.ball_input is not None:
+            # Camera pipeline replaces the noisy truth and its visibility rules.
+            ball, flying = self.ball_input()
+            current[:, :3] = ball
         visible = flying & (self.catchstep < self.startstep)
         first = visible & (self.first_visible < 0)
         self.first_visible[first] = 50 - self.catchstep[first]

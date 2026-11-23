@@ -311,3 +311,47 @@ from GPU nondeterminism). Kept out 6000 -> 12000: all .32 -> .45; mid-L
   kept only .05/.02 (touched but not deflected out).
 - Flight (both feet > 2 cm up) is right-sided: mid-R 58%, low-R 46%, high-R
   59% vs. mid-L 3%, low-L 1%, high-L 22%. Left saves use sliding/stepping.
+
+### Continued: 2026-11-17_21-48-09_source_k1_20k (resumed from model_12000)
+
+Kept out per region (mid-L mid-R high-L high-R low-L low-R | all):
+- 12000: .52 .61 .05 .02 .72 .82 | .45
+- 14000: .54 .56 .00 .04 .86 .74 | .46
+- 16000: .63 .44 .05 .06 .69 .74 | .43
+- 18000: .37 .57 .05 .00 .94 .75 | .45
+- 20000: .32 .50 .02 .00 .83 .67 | .39
+Plateau at ~.45 since 12000; regions trade off between checkpoints. High balls
+stay at 0..6%; at 20000 jumps (>5 cm root rise) fell to 8..11% from 41..71% at
+12000. Save credit exceeds kept-out (20000: .51 vs .39; low-R .98 vs .67):
+many deflections still roll into the goal.
+
+### Candidate changes (not implemented; both depart from upstream)
+
+1. Save credit only when the ball is kept out of the goal, not when its x
+   velocity changed enough (`_deflected`). Motivation: at model_20000 low-R has
+   98% deflection credit but 67% kept out; deflected balls still roll in.
+2. Make the high-ball jump reward act before the ball arrives (earlier
+   take-off). Motivation: the root peak is ~.07 s after the ball crosses the
+   robot plane; high balls stay at 0..6% kept out and jumps fell from 41..71%
+   (12000) to 8..11% (20000).
+
+## Vision ball input (opt-in)
+
+`source/vision/` adds a head-camera ball input. `SourceSettings.ball_input`
+("truth" default, "synthetic", "rendered") is the only hook: `state.actor()`
+replaces the 3 ball dims and the visibility mask. Rewards, critic, estimator
+labels and curriculum keep sim truth; the actor is still 750 dims. Task
+`Mjlab-Goalkeeper-Source-Vision-Flat-Booster-K1` = synthetic.
+Camera: Head_2 (0.065, 0, 0.08), level, 544x488, HFOV 105 (placeholder
+extrinsics). Measurement-model numbers (baseline 5 cm, disparity 0.15 px,
+30 Hz, 30-90 ms latency) are guesses until the real camera is measured.
+
+model_12000, play, 600 envs (rendered: 120 envs, segmentation oracle):
+- kept out: truth .43, synthetic .38, rendered .36 (before any vision fine-tune).
+- synthetic: tracker valid on 100% of shots, first valid at ball x median 4.2 m;
+  actor ball error median .05 (x<1), .07 (1-2), .12 (2-3), .23 m (3-4).
+- rendered raw frames are far more accurate than the synthetic model (sim depth
+  is noiseless), so rendered evaluation checks geometry and detection, not
+  sensor noise. Wide-angle localization uses the cone angle of the box (off-axis
+  balls look elongated); surface-to-centre depth offset 0.9 R from renders.
+- synthetic mode costs ~6 ms per env step at 512 envs (28 -> 34 ms).

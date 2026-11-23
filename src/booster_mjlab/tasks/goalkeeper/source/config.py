@@ -57,7 +57,7 @@ class SourceRunnerCfg(RslRlOnPolicyRunnerCfg):
     smoothness_lower_bound: float = 0.1
 
 
-def env_cfg(num_envs=6144, play=False, randomize=True):
+def env_cfg(num_envs=6144, play=False, randomize=True, ball_input="truth"):
     robot = get_k1_robot_cfg()
     actuators = []
     for a in robot.articulation.actuators:
@@ -131,11 +131,17 @@ def env_cfg(num_envs=6144, play=False, randomize=True):
             history_length=4,
         ),
     )
+    if ball_input == "rendered":
+        from .vision.camera import head_camera_cfg
+
+        scene.sensors = scene.sensors + (head_camera_cfg(),)
     cfg = SourceEnvCfg(
         scene=scene,
         decimation=4,
         episode_length_s=3.0,
-        source_settings=SourceSettings(play=play, randomize=randomize),
+        source_settings=SourceSettings(
+            play=play, randomize=randomize, ball_input=ball_input
+        ),
         observations={
             k: ObservationGroupCfg(
                 terms={
